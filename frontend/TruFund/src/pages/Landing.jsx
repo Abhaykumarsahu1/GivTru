@@ -44,7 +44,7 @@ const handleDonor = () => {
                     <div style={styles.cardIcon}>🏛️</div>
                     <h2 style={styles.cardTitle}>I'm a Campaigner</h2>
                     <p style={styles.cardDesc}>
-                        Register your NGO, launch a fundraising campaign,
+                        Launch a fundraising campaign,
                         and manage fund withdrawals through your board's approval.
                     </p>
                     <ul style={styles.featureList}>
@@ -54,7 +54,7 @@ const handleDonor = () => {
                         <li>✅ Full on-chain transparency</li>
                     </ul>
                     <button style={styles.primaryBtn} onClick={handleCampaigner}>
-                        Start a Campaign →
+                        Start a Campaign
                     </button>
                 </div>
 
@@ -73,7 +73,7 @@ const handleDonor = () => {
                         <li>✅ 100% on-chain record</li>
                     </ul>
                     <button style={styles.secondaryBtn} onClick={handleDonor}>
-                        Browse Campaigns →
+                        Browse Campaigns
                     </button>
                 </div>
 
