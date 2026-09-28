@@ -17,6 +17,7 @@ const CampaignDetail = () => {
     const [success, setSuccess]       = useState(null);
     const [donationAmt, setDonationAmt] = useState("");
     const [donors, setDonors]         = useState([]);
+    const [refunding, setRefunding] = useState(false);
 
     // ─────────────────────────────────────────
     //  FETCH CAMPAIGN DETAILS
@@ -136,6 +137,31 @@ const CampaignDetail = () => {
             setDonating(false);
         }
     };
+
+    const handleClaimRefund = async () => {
+    if (!account) { setError("Please connect your wallet"); return; }
+    try {
+        setRefunding(true);
+        setError(null);
+        setSuccess(null);
+
+        const contract = getCampaignContract(address);
+        const tx = await contract.claimRefund();
+        setSuccess("Refund submitted! Waiting for confirmation...");
+        await tx.wait();
+        setSuccess("✅ Refund claimed successfully!");
+        await fetchCampaign();
+
+    } catch (err) {
+        if (err.code === 4001) setError("Transaction rejected.");
+        else if (err.message?.includes("No donation to refund")) setError("You have no donation to refund.");
+        else if (err.message?.includes("Goal was met")) setError("Goal was met — no refunds available.");
+        else if (err.message?.includes("deadline not reached")) setError("Campaign deadline not reached yet.");
+        else setError(err.message || "Refund failed");
+    } finally {
+        setRefunding(false);
+    }
+};
 
     // ─────────────────────────────────────────
     //  HELPERS
@@ -388,6 +414,31 @@ const CampaignDetail = () => {
                             Withdrawals require board approval.
                         </p>
                     </div>  
+
+                     {/* Refund Card — shows only when campaign expired and goal not met */}
+                    {(campaign.status === 1 || new Date() > campaign.deadline) && 
+                        parseFloat(campaign.totalDonated) < parseFloat(campaign.goalAmount) && (
+                        <div style={styles.refundCard}>
+                            <h3 style={styles.refundTitle}>💸 Claim Refund</h3>
+                            <p style={styles.refundDesc}>
+                                This campaign expired without reaching its goal.
+                                If you donated, you can claim your ETH back.
+                            </p>
+                            {error && <div style={styles.errorBox}>⚠️ {error}</div>}
+                            {success && <div style={styles.successBox}>{success}</div>}
+                            <button
+                                style={{
+                                    ...styles.refundBtn,
+                                    opacity: refunding ? 0.6 : 1,
+                                    cursor: refunding ? "not-allowed" : "pointer",
+                                }}
+                                onClick={handleClaimRefund}
+                                disabled={refunding}
+                            >
+                                {refunding ? "⏳ Processing..." : "💸 Claim My Refund"}
+                            </button>
+                        </div>
+                    )}    
 
                     {/* Contract info */}
                     <div style={styles.card}>
@@ -749,6 +800,36 @@ const styles = {
         margin: 0,
         lineHeight: 1.5,
     },
+    refundCard: {
+    background: "#1e293b",
+    border: "2px solid #f59e0b",
+    borderRadius: "16px",
+    padding: "24px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+},
+refundTitle: {
+    fontSize: "18px",
+    fontWeight: "700",
+    color: "#fcd34d",
+    margin: 0,
+},
+refundDesc: {
+    color: "#94a3b8",
+    fontSize: "13px",
+    margin: 0,
+    lineHeight: 1.5,
+},
+refundBtn: {
+    background: "#f59e0b",
+    color: "#000",
+    border: "none",
+    padding: "14px",
+    borderRadius: "10px",
+    fontWeight: "bold",
+    fontSize: "15px",
+},
     donorRow: {
         display: "flex",
         justifyContent: "space-between",

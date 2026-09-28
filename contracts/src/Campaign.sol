@@ -2,7 +2,7 @@
 pragma solidity ^0.8.19;
 
 
-import "contracts/contracts/lib/openzeppelin-contracts/contracts/utils/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract Campaign is ReentrancyGuard {
 
@@ -154,6 +154,41 @@ contract Campaign is ReentrancyGuard {
         // INTERACTIONS — emit event (no external call here, ETH already received)
         emit DonationReceived(msg.sender, msg.value, totalDonated);
     }
+
+    // ─────────────────────────────────────────
+//  CLAIM REFUND (Donors)
+// ─────────────────────────────────────────
+
+event RefundClaimed(address indexed donor, uint256 amount);
+
+/**
+ * @dev Donors can claim refund if:
+ *      - Campaign deadline has passed AND
+ *      - Goal was NOT met
+ *      CEI pattern applied — state updated before transfer
+ */
+function claimRefund() external nonReentrant {
+    require(
+        block.timestamp > deadline,
+        "Campaign deadline not reached yet"
+    );
+    require(
+        totalDonated < goalAmount,
+        "Goal was met no refunds available"
+    );
+
+    uint256 amount = donations[msg.sender];
+    require(amount > 0, "No donation to refund");
+
+    // EFFECTS — zero out before transfer (CEI)
+    donations[msg.sender] = 0;
+
+    // INTERACTIONS — send ETH back to donor
+    (bool success, ) = payable(msg.sender).call{value: amount}("");
+    require(success, "Refund transfer failed");
+
+    emit RefundClaimed(msg.sender, amount);
+}
 
     // ─────────────────────────────────────────
     //  WITHDRAWAL REQUEST (Campaigner)
