@@ -30,7 +30,7 @@ const handleDonor = () => {
                     <span style={styles.highlight}>Powered by Blockchain</span>
                 </h1>
                 <p style={styles.subtitle}>
-                    TruFund is a decentralized charity platform where every donation
+                    GivTru is a decentralized charity platform where every donation
                     is tracked on-chain and every withdrawal requires board approval.
                     No middlemen. No blind trust.
                 </p>

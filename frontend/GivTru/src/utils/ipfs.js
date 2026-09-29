@@ -15,7 +15,7 @@ export const uploadImageToIPFS = async (file) => {
 
         // metadata
         const metadata = JSON.stringify({
-            name: `TruFund-${Date.now()}`,
+            name: `GivTru-${Date.now()}`,
         });
         formData.append("pinataMetadata", metadata);
 
@@ -55,7 +55,7 @@ export const uploadMetadataToIPFS = async (metadata) => {
             `${PINATA_BASE_URL}/pinning/pinJSONToIPFS`,
             {
                 pinataContent: metadata,
-                pinataMetadata: { name: `TruFund-Meta-${Date.now()}` },
+                pinataMetadata: { name: `GivTru-Meta-${Date.now()}` },
             },
             {
                 headers: {

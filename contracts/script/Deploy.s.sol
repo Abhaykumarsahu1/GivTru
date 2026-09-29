@@ -4,7 +4,7 @@ pragma solidity ^0.8.19;
 import "forge-std/Script.sol";
 import "../src/CampaignFactory.sol";
 
-contract DeployTruFund is Script {
+contract DeployGivTru is Script {
 
     function run() external {
 

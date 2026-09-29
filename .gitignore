@@ -5,7 +5,7 @@
 
 # Dependencies
 node_modules/
-frontend/TruFund/node_modules/
+frontend/GivTru/node_modules/
 
 # Foundry build artifacts
 contracts/out/

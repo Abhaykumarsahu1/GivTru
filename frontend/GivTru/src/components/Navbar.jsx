@@ -12,7 +12,7 @@ const Navbar = () => {
         <nav style={styles.nav}>
             {/* Logo */}
             <div style={styles.logo} onClick={() => navigate("/")}>
-                🌱 TruFund
+                🌱 GivTru
             </div>
 
             {/* Nav Links — only show when connected */}

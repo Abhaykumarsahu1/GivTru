@@ -1,10 +1,10 @@
-# TruFund
+# GivTru
 
-TruFund is a decentralized charity donation tracker built on Ethereum, designed to bring full transparency to how donations are collected and used. Every donation, campaign, and fund withdrawal is recorded on-chain, so donors can verify exactly where their money goes instead of relying on trust alone.
+GivTru is a decentralized charity donation tracker built on Ethereum, designed to bring full transparency to how donations are collected and used. Every donation, campaign, and fund withdrawal is recorded on-chain, so donors can verify exactly where their money goes instead of relying on trust alone.
 
 ## Problem
 
-Traditional charity platforms are opaque — donors have no way to verify that funds are actually used for the causes they were given for. TruFund solves this by moving the entire donation lifecycle (campaign creation, donations, and withdrawals) onto the blockchain, making every transaction publicly auditable.
+Traditional charity platforms are opaque — donors have no way to verify that funds are actually used for the causes they were given for. GivTru solves this by moving the entire donation lifecycle (campaign creation, donations, and withdrawals) onto the blockchain, making every transaction publicly auditable.
 
 ## Features
 
