@@ -246,7 +246,7 @@ const BoardHome = () => {
                                                         <span style={styles.youTag}>YOU</span>
                                                     )}
                                                     <a
-                                                        href={`https://sepolia.etherscan.io/address/${member}`}
+                                                        href={`https://arbiscan.io/address/${member}`}
                                                         target="_blank"
                                                         rel="noreferrer"
                                                         style={styles.miniLink}

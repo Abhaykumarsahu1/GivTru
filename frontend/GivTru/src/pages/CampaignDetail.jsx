@@ -310,7 +310,7 @@ const CampaignDetail = () => {
                         <div style={styles.addressBox}>
                             <span style={styles.addressText}>{campaign.campaigner}</span>
                             <a
-                                href={`https://sepolia.etherscan.io/address/${campaign.campaigner}`}
+                                href={`https://arbiscan.io/address/${campaign.campaigner}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={styles.etherscanLink}
@@ -333,7 +333,7 @@ const CampaignDetail = () => {
                                     {member.slice(0, 10)}...{member.slice(-8)}
                                 </span>
                                 <a
-                                    href={`https://sepolia.etherscan.io/address/${member}`}
+                                    href={`https://arbiscan.io/address/${member}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     style={styles.miniLink}
@@ -448,7 +448,7 @@ const CampaignDetail = () => {
                                 {address.slice(0, 10)}...{address.slice(-8)}
                             </span>
                             <a
-                                href={`https://sepolia.etherscan.io/address/${address}`}
+                                href={`https://arbiscan.io/address/${address}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={styles.etherscanLink}

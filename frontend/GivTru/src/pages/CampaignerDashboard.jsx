@@ -326,7 +326,7 @@ const CampaignerDashboard = () => {
                                     {campaignData.address.slice(0, 10)}...{campaignData.address.slice(-8)}
                                 </span>
                                 <a
-                                    href={`https://sepolia.etherscan.io/address/${campaignData.address}`}
+                                    href={`https://arbiscan.io/address/${campaignData.address}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     style={styles.etherscanLink}

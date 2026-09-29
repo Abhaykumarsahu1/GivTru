@@ -15,7 +15,7 @@ export const WalletProvider = ({ children }) => {
     const [error, setError]       = useState(null);
     const [isBoardMember, setIsBoardMember] = useState(false);
 
-    const SEPOLIA_CHAIN_ID = "0xaa36a7";
+    const ARBITRUM_CHAIN_ID = "0x66eee";
 
     const checkBoardMembership = async (account, provider) => {
     try {

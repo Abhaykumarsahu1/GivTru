@@ -138,8 +138,25 @@ const [uploadingIPFS, setUploadingIPFS] = useState(false);
 
         setSuccess("Transaction submitted! Waiting for confirmation...");
         const receipt = await tx.wait();
-        const event   = receipt.logs[0];
-        const campaignAddress = "0x" + event.topics[1].slice(26);
+        let campaignAddress = null;
+
+// find CampaignCreated event
+for (const log of receipt.logs) {
+    try {
+        if (log.topics && log.topics[1]) {
+            campaignAddress = "0x" + log.topics[1].slice(26);
+            break;
+        }
+    } catch (e) {
+        continue;
+    }
+}
+
+if (!campaignAddress) {
+    setSuccess("✅ Campaign deployed successfully!");
+    setTimeout(() => navigate("/dashboard"), 2000);
+    return;
+}
 
         setSuccess(`✅ Campaign deployed at ${campaignAddress}`);
         setTimeout(() => navigate("/dashboard"), 2000);
