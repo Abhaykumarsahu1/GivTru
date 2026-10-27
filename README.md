@@ -1,10 +1,13 @@
 # GivTru
 
-GivTru is a decentralized charity donation tracker built on Ethereum, designed to bring full transparency to how donations are collected and used. Every donation, campaign, and fund withdrawal is recorded on-chain, so donors can verify exactly where their money goes instead of relying on trust alone.
+GivTru is a decentralized donation tracker built on Ethereum, designed to bring full transparency to how donations are collected and used. Every donation, campaign, and fund withdrawal is recorded on-chain, so donors can verify exactly where their money goes instead of relying on trust alone.
 
 ## Problem
 
-Traditional charity platforms are opaque — donors have no way to verify that funds are actually used for the causes they were given for. GivTru solves this by moving the entire donation lifecycle (campaign creation, donations, and withdrawals) onto the blockchain, making every transaction publicly auditable.
+Traditional charity platforms are opaque — donors have no way to verify that funds are actually used for the causes they were given for.
+EXISTING PLATFORM problems include - "no refund mechanism", "no multi signature party" and other stuff.
+GivTru solves this by moving the entire donation lifecycle (campaign creation, donations, and withdrawals) onto the blockchain, making every transaction publicly auditable.
+and the existing platform problems solution is discussed in features.
 
 ## Features
 
@@ -12,7 +15,8 @@ Traditional charity platforms are opaque — donors have no way to verify that f
 - **Transparent donations** — All donations are recorded immutably on-chain and tied to a specific campaign.
 - **Verifiable fund withdrawals** — Withdrawals are traceable, so donors can see how raised funds are actually used.
 - **Decentralized storage** — Campaign metadata/images are stored on IPFS (via Pinata) instead of centralized servers.
-- **Wallet-based auth** — Users connect via MetaMask; no accounts or passwords.
+- **Donor can claim refund if condition does not met by the campaign**
+- **Multi-sig approval after only that the fund will released other wised it will be locked in smart contract and the release will be milestone based**
 
 ## Tech Stack
 
