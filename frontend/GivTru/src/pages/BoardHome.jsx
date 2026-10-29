@@ -6,7 +6,7 @@ import { ethers } from "ethers";
 
 const BoardHome = () => {
     const navigate = useNavigate();
-    const { account } = useWallet();
+    const { account, symbol, explorer, chainId } = useWallet();
     const { getFactoryContractReadOnly, getCampaignContractReadOnly } = useContract();
 
     const [boardCampaigns, setBoardCampaigns] = useState([]);
@@ -15,7 +15,7 @@ const BoardHome = () => {
 
     useEffect(() => {
         if (account) fetchBoardCampaigns();
-    }, [account]);
+    }, [account, chainId]);
 
     const fetchBoardCampaigns = async () => {
         try {
@@ -209,11 +209,11 @@ const BoardHome = () => {
                                     {/* Stats */}
                                     <div style={styles.statsRow}>
                                         <div style={styles.statBox}>
-                                            <span style={styles.statVal}>{camp.totalDonated} ETH</span>
+                                            <span style={styles.statVal}>{camp.totalDonated} {symbol}</span>
                                             <span style={styles.statLbl}>Raised</span>
                                         </div>
                                         <div style={styles.statBox}>
-                                            <span style={styles.statVal}>{camp.balance} ETH</span>
+                                            <span style={styles.statVal}>{camp.balance} {symbol}</span>
                                             <span style={styles.statLbl}>Available</span>
                                         </div>
                                         <div style={styles.statBox}>
@@ -246,7 +246,7 @@ const BoardHome = () => {
                                                         <span style={styles.youTag}>YOU</span>
                                                     )}
                                                     <a
-                                                        href={`https://arbiscan.io/address/${member}`}
+                                                        href={`${explorer}/address/${member}`}
                                                         target="_blank"
                                                         rel="noreferrer"
                                                         style={styles.miniLink}

@@ -6,7 +6,7 @@ import { ethers } from "ethers";
 
 const CampaignerDashboard = () => {
     const navigate = useNavigate();
-    const { account } = useWallet();
+    const { account, symbol, explorer, chainId } = useWallet();
     const { getFactoryContractReadOnly, getCampaignContract, getCampaignContractReadOnly } = useContract();
 
     const [campaigns, setCampaigns]         = useState([]);
@@ -30,7 +30,7 @@ const CampaignerDashboard = () => {
 
     useEffect(() => {
         if (account) fetchMyCampaigns();
-    }, [account]);
+    }, [account, chainId]);
 
     const fetchMyCampaigns = async () => {
         try {
@@ -294,15 +294,15 @@ const CampaignerDashboard = () => {
                             {/* Stats grid */}
                             <div style={styles.statsGrid}>
                                 <div style={styles.statBox}>
-                                    <span style={styles.statVal}>{campaignData.totalDonated} ETH</span>
+                                    <span style={styles.statVal}>{campaignData.totalDonated} {symbol}</span>
                                     <span style={styles.statLbl}>Raised</span>
                                 </div>
                                 <div style={styles.statBox}>
-                                    <span style={styles.statVal}>{campaignData.goalAmount} ETH</span>
+                                    <span style={styles.statVal}>{campaignData.goalAmount} {symbol}</span>
                                     <span style={styles.statLbl}>Goal</span>
                                 </div>
                                 <div style={styles.statBox}>
-                                    <span style={styles.statVal}>{campaignData.balance} ETH</span>
+                                    <span style={styles.statVal}>{campaignData.balance} {symbol}</span>
                                     <span style={styles.statLbl}>Available</span>
                                 </div>
                                 <div style={styles.statBox}>
@@ -326,12 +326,12 @@ const CampaignerDashboard = () => {
                                     {campaignData.address.slice(0, 10)}...{campaignData.address.slice(-8)}
                                 </span>
                                 <a
-                                    href={`https://arbiscan.io/address/${campaignData.address}`}
+                                    href={`${explorer}/address/${campaignData.address}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     style={styles.etherscanLink}
                                 >
-                                    ↗ Etherscan
+                                    ↗ Explorer
                                 </a>
                             </div>
                         </div>
@@ -372,7 +372,7 @@ const CampaignerDashboard = () => {
 
                                             <div style={styles.reqMeta}>
                                                 <span style={styles.reqAmount}>
-                                                    💰 {req.amount} ETH
+                                                    💰 {req.amount} {symbol}
                                                 </span>
                                                 <span style={styles.reqVotes}>
                                                     ✅ {req.approvalCount} approved
@@ -415,7 +415,7 @@ const CampaignerDashboard = () => {
                             </div>
 
                             <div style={styles.field}>
-                                <label style={styles.label}>Amount (ETH) *</label>
+                                <label style={styles.label}>Amount ({symbol}) *</label>
                                 <input
                                     style={styles.input}
                                     type="number"
@@ -426,7 +426,7 @@ const CampaignerDashboard = () => {
                                     onChange={(e) => setReqForm({...reqForm, amount: e.target.value})}
                                 />
                                 <p style={styles.balanceNote}>
-                                    Available: {campaignData.balance} ETH
+                                    Available: {campaignData.balance} {symbol}
                                 </p>
                             </div>
 

@@ -16,3 +16,12 @@ contracts/broadcast/
 .DS_Store
 dist/
 build/
+
+# local / sensitive
+.env
+*.env
+contracts/cache/
+contracts/broadcast/
+contracts/out/
+node_modules/
+dist/

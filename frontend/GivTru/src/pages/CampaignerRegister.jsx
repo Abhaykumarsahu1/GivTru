@@ -14,7 +14,7 @@ const [imagePreview, setImagePreview] = useState(null);
 const [uploadingIPFS, setUploadingIPFS] = useState(false);
 
     const navigate = useNavigate();
-    const { account } = useWallet();
+    const { account , symbol} = useWallet();
     const { getFactoryContract } = useContract();
 
     const [loading, setLoading] = useState(false);
@@ -277,7 +277,7 @@ if (!campaignAddress) {
 
                         <div style={styles.row}>
                             <div style={styles.field}>
-                                <label style={styles.label}>Goal Amount (ETH) *</label>
+                                <label style={styles.label}>Goal Amount ({symbol}) *</label>
                                 <input
                                     style={styles.input}
                                     name="goalAmount"

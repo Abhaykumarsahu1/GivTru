@@ -6,7 +6,7 @@ import { ethers } from "ethers";
 
 const BoardDashboard = () => {
     const { address } = useParams();
-    const { account } = useWallet();
+    const { account, symbol, explorer, chainId } = useWallet();
     const { getCampaignContract, getCampaignContractReadOnly } = useContract();
 
     const [campaign, setCampaign]   = useState(null);
@@ -23,7 +23,7 @@ const BoardDashboard = () => {
 
     useEffect(() => {
         if (address && account) fetchData();
-    }, [address, account]);
+    }, [address, account, chainId]);
 
     const fetchData = async () => {
         try {
@@ -62,8 +62,6 @@ const BoardDashboard = () => {
             const total = Number(totalRequests);
             for (let i = 0; i < total; i++) {
                 const req = await contract.requests(i);
-                // check if this member already voted
-                const hasVoted = await contract.requests(i);
                 reqList.push({
                     id: i,
                     description: req.description,
@@ -204,11 +202,11 @@ const BoardDashboard = () => {
             <div style={styles.summaryCard}>
                 <div style={styles.summaryGrid}>
                     <div style={styles.summaryItem}>
-                        <span style={styles.summaryVal}>{campaign.totalDonated} ETH</span>
+                        <span style={styles.summaryVal}>{campaign.totalDonated} {symbol}</span>
                         <span style={styles.summaryLbl}>Total Raised</span>
                     </div>
                     <div style={styles.summaryItem}>
-                        <span style={styles.summaryVal}>{campaign.balance} ETH</span>
+                        <span style={styles.summaryVal}>{campaign.balance} {symbol}</span>
                         <span style={styles.summaryLbl}>Available</span>
                     </div>
                     <div style={styles.summaryItem}>
@@ -275,7 +273,7 @@ const BoardDashboard = () => {
                                                 <span style={styles.executedTag}>✅ Funds Released</span>
                                             )}
                                         </div>
-                                        <span style={styles.reqAmount}>{req.amount} ETH</span>
+                                        <span style={styles.reqAmount}>{req.amount} {symbol}</span>
                                     </div>
 
                                     {/* Description */}
@@ -395,7 +393,7 @@ const BoardDashboard = () => {
                                 <span style={styles.youTag}>YOU</span>
                             )}
                             <a
-                                href={`https://arbiscan.io/address/${member}`}
+                                href={`${explorer}/address/${member}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={styles.miniLink}

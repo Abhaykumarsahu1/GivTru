@@ -13,16 +13,16 @@ const WelcomeModal = ({ onAgree }) => {
 
     const content = {
         donate: [
-            { step: "1", title: "Connect Wallet", desc: "Click 'Connect Wallet' and select your MetaMask account. Make sure you're on Arbitrum One network." },
+            { step: "1", title: "Connect Wallet", desc: "Click 'Connect Wallet' and pick MetaMask, Phantom or BridgeKey. Use the network dropdown in the navbar to choose Arbitrum Sepolia or MST." },
             { step: "2", title: "Browse Campaigns", desc: "Go to 'Browse Campaigns' to see all active campaigns on the blockchain." },
-            { step: "3", title: "Donate", desc: "Click 'Donate Now' on any active campaign. Minimum donation is 0.01 ETH. Funds go directly to the smart contract — not to any person." },
+            { step: "3", title: "Donate", desc: "Click 'Donate Now' on any active campaign. Minimum donation is 0.01 of the network's coin (ETH or MSTC). Funds go directly to the smart contract — not to any person." },
             { step: "4", title: "Track Your Donation", desc: "Go to 'My Dashboard' to see all campaigns you donated to and track where your money is at any time." },
         ],
         campaign: [
-            { step: "1", title: "Connect Wallet", desc: "Connect your MetaMask wallet. This wallet will be the campaign owner." },
+            { step: "1", title: "Connect Wallet", desc: "Connect your wallet. This wallet will be the campaign owner." },
             { step: "2", title: "Start Campaign", desc: "Click 'Start Campaign', fill in your title, description, goal amount, deadline, and upload an image." },
             { step: "3", title: "Add Board Members", desc: "Add minimum 3 trusted board member wallet addresses. These people will govern your fund withdrawals." },
-            { step: "4", title: "Deploy", desc: "Click 'Deploy Campaign'. MetaMask will ask you to confirm — pay the small gas fee and your campaign goes live on blockchain!" },
+            { step: "4", title: "Deploy", desc: "Click 'Deploy Campaign'. Your wallet will ask you to confirm — pay the small gas fee and your campaign goes live on blockchain!" },
             { step: "5", title: "Request Withdrawal", desc: "When you need funds, go to 'My Dashboard', create a withdrawal request with description and amount. Board members will vote on it." },
         ],
         board: [
@@ -32,8 +32,8 @@ const WelcomeModal = ({ onAgree }) => {
             { step: "4", title: "Vote", desc: "Click 'Approve' or 'Reject' on each request. When 2 out of 3 board members approve, funds are automatically released to the campaigner." },
         ],
         track: [
-            { step: "1", title: "Every Transaction On-Chain", desc: "Every donation, withdrawal request, vote, and fund release is permanently recorded on Arbitrum blockchain. Nobody can alter this history." },
-            { step: "2", title: "View on Arbiscan", desc: "Click any '↗ Arbiscan' link in the app to see the full transaction history of any campaign contract." },
+            { step: "1", title: "Every Transaction On-Chain", desc: "Every donation, withdrawal request, vote, and fund release is permanently recorded on the blockchain. Nobody can alter this history." },
+            { step: "2", title: "View on the Explorer", desc: "Click any '↗ Explorer' link in the app to see the full transaction history of any campaign contract." },
             { step: "3", title: "My Dashboard", desc: "Donors can see exactly which campaigns they donated to, how much, and the current status of funds in 'My Dashboard'." },
             { step: "4", title: "Funds Are Locked", desc: "Donated funds stay locked in the smart contract until board members approve a withdrawal. No single person can touch the funds alone." },
         ],
@@ -91,10 +91,10 @@ const WelcomeModal = ({ onAgree }) => {
                 <div style={styles.notesBox}>
                     <p style={styles.notesTitle}>⚠️ Important Notes</p>
                     <ul style={styles.notesList}>
-                        <li style={styles.notesItem}>Minimum donation is <strong>0.01 ETH</strong></li>
-                        <li style={styles.notesItem}>You need <strong>MetaMask</strong> wallet and <strong>Arbitrum One</strong> network</li>
+                        <li style={styles.notesItem}>Minimum donation is <strong>0.01 ETH / MSTC</strong></li>
+                        <li style={styles.notesItem}>You need a wallet (<strong>MetaMask, Phantom or BridgeKey</strong>) on <strong>Arbitrum Sepolia or MST</strong></li>
                         <li style={styles.notesItem}>All transactions are <strong>irreversible</strong> — double check before confirming</li>
-                        <li style={styles.notesItem}>Gas fees are paid in ETH and are typically less than <strong>$0.01</strong> on Arbitrum</li>
+                        <li style={styles.notesItem}>Gas fees are paid in the network's coin (ETH or MSTC) and are very low</li>
                         <li style={styles.notesItem}>Funds are <strong>never held by Givtru</strong> — only by the smart contract</li>
                     </ul>
                 </div>

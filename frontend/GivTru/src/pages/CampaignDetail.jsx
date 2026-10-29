@@ -7,7 +7,7 @@ import { ethers } from "ethers";
 const CampaignDetail = () => {
     const { address } = useParams();
     const navigate    = useNavigate();
-    const { account } = useWallet();
+    const { account, symbol, explorer, chainId } = useWallet();
     const { getCampaignContract, getCampaignContractReadOnly } = useContract();
 
     const [campaign, setCampaign]     = useState(null);
@@ -25,7 +25,7 @@ const CampaignDetail = () => {
 
     useEffect(() => {
         if (address) fetchCampaign();
-    }, [address]);
+    }, [address, chainId]);
 
     const fetchCampaign = async () => {
         try {
@@ -102,7 +102,7 @@ const CampaignDetail = () => {
     const handleDonate = async () => {
         if (!account) { setError("Please connect your wallet"); return; }
         if (!donationAmt || parseFloat(donationAmt) < 0.01) {
-            setError("Minimum donation is 0.01 ETH");
+            setError("Minimum donation is 0.01 ${symbol}");
             return;
         }
 
@@ -120,7 +120,7 @@ const CampaignDetail = () => {
 
             setSuccess("Transaction submitted! Waiting for confirmation...");
             await tx.wait();
-            setSuccess(`✅ Donation of ${donationAmt} ETH confirmed!`);
+            setSuccess(`✅ Donation of ${donationAmt} ${symbol} confirmed!`);
             setDonationAmt("");
 
             // refresh campaign data
@@ -257,7 +257,7 @@ const CampaignDetail = () => {
                             </div>
                             <div style={styles.progressStats}>
                                 <div style={styles.progressStat}>
-                                    <span style={styles.bigNum}>{campaign.totalDonated} ETH</span>
+                                    <span style={styles.bigNum}>{campaign.totalDonated} {symbol}</span>
                                     <span style={styles.smallLabel}>raised</span>
                                 </div>
                                 <div style={styles.progressStat}>
@@ -265,7 +265,7 @@ const CampaignDetail = () => {
                                     <span style={styles.smallLabel}>funded</span>
                                 </div>
                                 <div style={styles.progressStat}>
-                                    <span style={styles.bigNum}>{campaign.goalAmount} ETH</span>
+                                    <span style={styles.bigNum}>{campaign.goalAmount} {symbol}</span>
                                     <span style={styles.smallLabel}>goal</span>
                                 </div>
                             </div>
@@ -310,12 +310,12 @@ const CampaignDetail = () => {
                         <div style={styles.addressBox}>
                             <span style={styles.addressText}>{campaign.campaigner}</span>
                             <a
-                                href={`https://arbiscan.io/address/${campaign.campaigner}`}
+                                href={`${explorer}/address/${campaign.campaigner}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={styles.etherscanLink}
                             >
-                                View on Etherscan ↗
+                                View on Explorer ↗
                             </a>
                         </div>
                     </div>
@@ -333,7 +333,7 @@ const CampaignDetail = () => {
                                     {member.slice(0, 10)}...{member.slice(-8)}
                                 </span>
                                 <a
-                                    href={`https://arbiscan.io/address/${member}`}
+                                    href={`${explorer}/address/${member}`}
                                     target="_blank"
                                     rel="noreferrer"
                                     style={styles.miniLink}
@@ -363,7 +363,7 @@ const CampaignDetail = () => {
                         {success && <div style={styles.successBox}>{success}</div>}
 
                         <div style={styles.inputGroup}>
-                            <label style={styles.inputLabel}>Amount (ETH)</label>
+                            <label style={styles.inputLabel}>Amount ({symbol})</label>
                             <div style={styles.inputWrapper}>
                                 <input
                                     style={{
@@ -378,9 +378,9 @@ const CampaignDetail = () => {
                                     onChange={(e) => setDonationAmt(e.target.value)}
                                     disabled={!isActive}
                                 />
-                                <span style={styles.ethLabel}>ETH</span>
+                                <span style={styles.ethLabel}>{symbol}</span>
                             </div>
-                            <p style={styles.minNote}>Minimum: 0.01 ETH</p>
+                            <p style={styles.minNote}>Minimum: 0.01 {symbol}</p>
                         </div>
 
                         {/* Quick amounts */}
@@ -392,7 +392,7 @@ const CampaignDetail = () => {
                                     onClick={() => setDonationAmt(amt)}
                                     disabled={!isActive}
                                 >
-                                    {amt} ETH
+                                    {amt} {symbol}
                                 </button>
                             ))}
                         </div>
@@ -422,7 +422,7 @@ const CampaignDetail = () => {
                             <h3 style={styles.refundTitle}>💸 Claim Refund</h3>
                             <p style={styles.refundDesc}>
                                 This campaign expired without reaching its goal.
-                                If you donated, you can claim your ETH back.
+                                If you donated, you can claim your {symbol} back.
                             </p>
                             {error && <div style={styles.errorBox}>⚠️ {error}</div>}
                             {success && <div style={styles.successBox}>{success}</div>}
@@ -448,12 +448,12 @@ const CampaignDetail = () => {
                                 {address.slice(0, 10)}...{address.slice(-8)}
                             </span>
                             <a
-                                href={`https://arbiscan.io/address/${address}`}
+                                href={`${explorer}/address/${address}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 style={styles.etherscanLink}
                             >
-                                View on Etherscan ↗
+                                View on Explorer ↗
                             </a>
                         </div>
                     </div>
@@ -486,7 +486,7 @@ const CampaignDetail = () => {
                                         {donor.address.slice(0, 8)}...{donor.address.slice(-6)}
                                     </span>
                                     <span style={styles.donorAmt}>
-                                        {donor.amount} ETH
+                                        {donor.amount} {symbol}
                                     </span>
                                 </div>
                             ))}

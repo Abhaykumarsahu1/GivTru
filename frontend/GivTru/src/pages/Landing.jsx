@@ -68,7 +68,7 @@ const handleDonor = () => {
                     </p>
                     <ul style={styles.featureList}>
                         <li>✅ Browse all campaigns</li>
-                        <li>✅ Donate in ETH</li>
+                        <li>✅ Donate in ETH or MSTC</li>
                         <li>✅ Track fund usage</li>
                         <li>✅ 100% on-chain record</li>
                     </ul>
@@ -97,8 +97,8 @@ const handleDonor = () => {
                 </div>
                 <div style={styles.statDivider} />
                 <div style={styles.stat}>
-                    <span style={styles.statNumber}>ETH</span>
-                    <span style={styles.statLabel}>Sepolia Testnet</span>
+                    <span style={styles.statNumber}>2</span>
+                    <span style={styles.statLabel}>Chains: Arbitrum + MST</span>
                 </div>
             </div>
 

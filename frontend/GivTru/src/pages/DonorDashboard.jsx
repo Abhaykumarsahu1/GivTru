@@ -1,11 +1,13 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useContract } from "../hooks/useContract";
+import { useWallet } from "../context/WalletContext";
 import { ethers } from "ethers";
 import { getIPFSUrl } from "../utils/ipfs";
 
 const DonorDashboard = () => {
     const navigate = useNavigate();
+    const { symbol, chainId } = useWallet();
     const { getFactoryContractReadOnly, getCampaignContractReadOnly } = useContract();
 
     const [campaigns, setCampaigns]   = useState([]);
@@ -18,7 +20,7 @@ const DonorDashboard = () => {
 
     useEffect(() => {
         fetchCampaigns();
-    }, []);
+    }, [chainId]);
 
     const fetchCampaigns = async () => {
         try {
@@ -26,7 +28,7 @@ const DonorDashboard = () => {
             setError(null);
 
             const factory = getFactoryContractReadOnly();
-            if (!factory) { setError("Contract not loaded"); return; }
+            if (!factory) { setError("Givtru isn't deployed on this network yet. Switch networks from the navbar."); return; }
 
             // get all campaign addresses from factory
             const addresses = await factory.getAllCampaigns();
@@ -195,7 +197,7 @@ const DonorDashboard = () => {
                         <div style={styles.statDivider} />
                         <div style={styles.stat}>
                             <span style={styles.statNum}>
-                                {campaigns.reduce((sum, c) => sum + parseFloat(c.totalDonated), 0).toFixed(3)} ETH
+                                {campaigns.reduce((sum, c) => sum + parseFloat(c.totalDonated), 0).toFixed(3)} {symbol}
                             </span>
                             <span style={styles.statLabel}>Total Raised</span>
                         </div>
@@ -255,10 +257,10 @@ const DonorDashboard = () => {
                                         </div>
                                         <div style={styles.progressLabels}>
                                             <span style={styles.raised}>
-                                                {campaign.totalDonated} ETH raised
+                                                {campaign.totalDonated} {symbol} raised
                                             </span>
                                             <span style={styles.goal}>
-                                                Goal: {campaign.goalAmount} ETH
+                                                Goal: {campaign.goalAmount} {symbol}
                                             </span>
                                         </div>
                                         <div style={styles.progressPct}>

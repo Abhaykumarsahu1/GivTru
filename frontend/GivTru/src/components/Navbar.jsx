@@ -1,8 +1,9 @@
 import { useWallet } from "../context/WalletContext";
 import { useNavigate, useLocation } from "react-router-dom";
+import { NETWORKS } from "../contracts/networks";
 
 const Navbar = () => {
-    const { account, connectWallet, disconnectWallet, shortAddress, loading, isBoardMember } = useWallet();
+    const { account, connectWallet, disconnectWallet, shortAddress, loading, isBoardMember, chainId, switchNetwork } = useWallet();
     const navigate  = useNavigate();
     const location  = useLocation();
 
@@ -67,6 +68,16 @@ const Navbar = () => {
             <div style={styles.right}>
                 {account ? (
                     <>
+                    <select
+                        style={styles.networkSelect}
+                        value={NETWORKS[chainId] ? chainId : ""}
+                        onChange={(e) => switchNetwork(e.target.value)}
+                    >
+                        {!NETWORKS[chainId] && <option value="">Unsupported network</option>}
+                        {Object.values(NETWORKS).map((n) => (
+                            <option key={n.chainId} value={n.chainId}>{n.name}</option>
+                        ))}
+                    </select>
                         <span style={styles.address}>
                             {shortAddress(account)}
                         </span>
@@ -107,6 +118,15 @@ const styles = {
         cursor: "pointer",
         fontFamily: "sans-serif",
     },
+    networkSelect: {
+    background: "#1e293b",
+    color: "#f1f5f9",
+    border: "1px solid #334155",
+    borderRadius: "8px",
+    padding: "8px 12px",
+    fontSize: "13px",
+    cursor: "pointer",
+},
     navLinks: {
         display: "flex",
         alignItems: "center",
