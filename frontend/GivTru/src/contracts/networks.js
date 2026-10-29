@@ -21,7 +21,7 @@ export const NETWORKS = {
         symbol: "MSTC",
         rpc: "https://mariorpc.mstblockchain.com/",
         explorer: "https://mstscan.com",
-        factory: "", // fill after mainnet deploy
+        factory: "0x1565efF66ed51176901B8a2A227359d31B9A0763",
     },
 };
 
