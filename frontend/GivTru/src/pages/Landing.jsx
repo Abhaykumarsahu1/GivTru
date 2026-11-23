@@ -1,237 +1,148 @@
 import { useNavigate } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
+import { useToast } from "../context/ToastContext";
+import CryptoBackdrop from "../components/CryptoBackdrop";
+
+const STATS = [
+    { value: "100%", label: "On-chain transparency" },
+    { value: "2/3",  label: "Board supermajority required" },
+    { value: "0",    label: "Middlemen" },
+];
+
+const css = `
+.gt-landing {
+    position: relative;
+    overflow: hidden;
+    min-height: calc(100vh - 69px); /* viewport minus navbar */
+    display: flex;
+}
+.gt-landing-main {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 56px;
+    padding: 48px var(--page-gutter) 40px;
+}
+.gt-hero {
+    max-width: 640px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 20px;
+    text-align: left;
+}
+.gt-hero-title {
+    margin: 0;
+    font-size: clamp(36px, 5.2vw, 60px);
+    line-height: 1.1;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--text);
+}
+.gt-hero-title span { color: #16a34a; }
+.gt-hero-sub {
+    margin: 0;
+    max-width: 560px;
+    font-size: 18px;
+    line-height: 1.7;
+    color: var(--text-muted);
+}
+.gt-hero-actions { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 8px; }
+.gt-btn-lg { padding: 14px 28px; font-size: 16px; border-radius: 10px; }
+.gt-landing .gt-btn-secondary {
+    background: rgba(255, 255, 255, 0.85);
+    color: var(--primary-ink);
+    border-color: var(--primary-ink);
+}
+.gt-landing .gt-btn-secondary:hover:not(:disabled) { background: #f0fdf4; }
+
+.gt-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+}
+.gt-stat {
+    padding: 26px 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    text-align: center;
+}
+.gt-stat + .gt-stat { border-left: 1px solid var(--border); }
+.gt-stat-value { font-size: 30px; font-weight: 800; color: var(--primary-ink); }
+.gt-stat-label { font-size: 13px; color: var(--text-dim); }
+
+@media (max-width: 720px) {
+    .gt-landing-main { gap: 36px; padding-top: 32px; }
+    .gt-hero-sub { font-size: 16px; }
+    .gt-hero-actions .gt-btn { width: 100%; }
+    .gt-stats { grid-template-columns: 1fr; }
+    .gt-stat + .gt-stat { border-left: none; border-top: 1px solid var(--border); }
+}
+`;
 
 const Landing = () => {
     const navigate = useNavigate();
+    const toast = useToast();
     const { account, connectWallet } = useWallet();
 
-   const handleCampaigner = () => {
-    if (!account) {
-        alert("Please connect your wallet first!");
-        return;
-    }
-    navigate("/register");
-};
+    // Not connected: open the wallet picker instead of an alert()
+    const go = (path) => {
+        if (!account) {
+            toast.info("Connect your wallet to continue.");
+            connectWallet();
+            return;
+        }
+        navigate(path);
+    };
 
-const handleDonor = () => {
-    if (!account) {
-        alert("Please connect your wallet first!");
-        return;
-    }
-    navigate("/donate");
-};
     return (
-        <div style={styles.container}>
+        <div className="gt-landing">
+            <style>{css}</style>
+            <CryptoBackdrop />
 
-            {/* Hero Section */}
-            <div style={styles.hero}>
-                <h1 style={styles.title}>
-                    Transparent Giving, <br />
-                    <span style={styles.highlight}>Powered by Blockchain</span>
-                </h1>
-                <p style={styles.subtitle}>
-                    GivTru is a decentralized charity platform where every donation
-                    is tracked on-chain and every withdrawal requires board approval.
-                    No middlemen. No blind trust.
-                </p>
-            </div>
-
-            {/* Cards */}
-            <div style={styles.cardContainer}>
-
-                {/* Campaigner Card */}
-                <div style={styles.card}>
-                    <div style={styles.cardIcon}>🏛️</div>
-                    <h2 style={styles.cardTitle}>I'm a Campaigner</h2>
-                    <p style={styles.cardDesc}>
-                        Launch a fundraising campaign,
-                        and manage fund withdrawals through your board's approval.
+            <main className="gt-landing-main">
+                <section className="gt-hero">
+                    <h1 className="gt-hero-title">
+                        Transparent Giving,
+                        <br />
+                        <span>Powered by Blockchain</span>
+                    </h1>
+                    <p className="gt-hero-sub">
+                        GivTru is a decentralized charity platform where every donation
+                        is tracked on-chain and every withdrawal requires board approval.
+                        No middlemen. No blind trust.
                     </p>
-                    <ul style={styles.featureList}>
-                        <li>✅ Create & manage campaigns</li>
-                        <li>✅ Upload docs to IPFS</li>
-                        <li>✅ Request fund withdrawals</li>
-                        <li>✅ Full on-chain transparency</li>
-                    </ul>
-                    <button style={styles.primaryBtn} onClick={handleCampaigner}>
-                        Start a Campaign
-                    </button>
-                </div>
 
-                {/* Donor Card */}
-                <div style={styles.card}>
-                    <div style={styles.cardIcon}>💚</div>
-                    <h2 style={styles.cardTitle}>I'm a Donor</h2>
-                    <p style={styles.cardDesc}>
-                        Browse verified campaigns, donate crypto directly to
-                        smart contracts, and track exactly how your funds are used.
-                    </p>
-                    <ul style={styles.featureList}>
-                        <li>✅ Browse all campaigns</li>
-                        <li>✅ Donate in ETH or MSTC</li>
-                        <li>✅ Track fund usage</li>
-                        <li>✅ 100% on-chain record</li>
-                    </ul>
-                    <button style={styles.secondaryBtn} onClick={handleDonor}>
-                        Browse Campaigns
-                    </button>
-                </div>
+                    <div className="gt-hero-actions">
+                        <button className="gt-btn gt-btn-primary gt-btn-lg" onClick={() => go("/register")}>
+                            Start a Campaign
+                        </button>
+                        <button className="gt-btn gt-btn-secondary gt-btn-lg" onClick={() => go("/donate")}>
+                            Browse Campaigns
+                        </button>
+                    </div>
+                </section>
 
-            </div>
-
-            {/* Stats bar */}
-            <div style={styles.statsBar}>
-                <div style={styles.stat}>
-                    <span style={styles.statNumber}>100%</span>
-                    <span style={styles.statLabel}>On-chain Transparency</span>
-                </div>
-                <div style={styles.statDivider} />
-                <div style={styles.stat}>
-                    <span style={styles.statNumber}>2/3</span>
-                    <span style={styles.statLabel}>Supermajority Required</span>
-                </div>
-                <div style={styles.statDivider} />
-                <div style={styles.stat}>
-                    <span style={styles.statNumber}>0</span>
-                    <span style={styles.statLabel}>Middlemen</span>
-                </div>
-                <div style={styles.statDivider} />
-                <div style={styles.stat}>
-                    <span style={styles.statNumber}>2</span>
-                    <span style={styles.statLabel}>Chains: Arbitrum + MST</span>
-                </div>
-            </div>
-
+                <section className="gt-stats" aria-label="Platform guarantees">
+                    {STATS.map((s) => (
+                        <div key={s.label} className="gt-stat">
+                            <span className="gt-stat-value">{s.value}</span>
+                            <span className="gt-stat-label">{s.label}</span>
+                        </div>
+                    ))}
+                </section>
+            </main>
         </div>
     );
-};
-
-const styles = {
-    container: {
-        minHeight: "100vh",
-        background: "#0f172a",
-        color: "#f1f5f9",
-        fontFamily: "sans-serif",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        padding: "60px 20px",
-        gap: "60px",
-    },
-    hero: {
-        textAlign: "center",
-        maxWidth: "700px",
-    },
-    title: {
-        fontSize: "48px",
-        fontWeight: "800",
-        lineHeight: 1.2,
-        margin: 0,
-    },
-    highlight: {
-        color: "#22c55e",
-    },
-    subtitle: {
-        fontSize: "18px",
-        color: "#94a3b8",
-        marginTop: "20px",
-        lineHeight: 1.7,
-    },
-    cardContainer: {
-        display: "flex",
-        gap: "30px",
-        flexWrap: "wrap",
-        justifyContent: "center",
-    },
-    card: {
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "16px",
-        padding: "40px",
-        width: "340px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-        transition: "transform 0.2s",
-    },
-    cardIcon: {
-        fontSize: "48px",
-    },
-    cardTitle: {
-        fontSize: "24px",
-        fontWeight: "700",
-        margin: 0,
-        color: "#f1f5f9",
-    },
-    cardDesc: {
-        color: "#94a3b8",
-        lineHeight: 1.6,
-        margin: 0,
-        fontSize: "15px",
-    },
-    featureList: {
-        listStyle: "none",
-        padding: 0,
-        margin: 0,
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-        color: "#cbd5e1",
-        fontSize: "14px",
-    },
-    primaryBtn: {
-        background: "#22c55e",
-        color: "#000",
-        border: "none",
-        padding: "14px",
-        borderRadius: "10px",
-        fontWeight: "bold",
-        cursor: "pointer",
-        fontSize: "16px",
-        marginTop: "8px",
-    },
-    secondaryBtn: {
-        background: "transparent",
-        color: "#22c55e",
-        border: "2px solid #22c55e",
-        padding: "14px",
-        borderRadius: "10px",
-        fontWeight: "bold",
-        cursor: "pointer",
-        fontSize: "16px",
-        marginTop: "8px",
-    },
-    statsBar: {
-        display: "flex",
-        gap: "40px",
-        alignItems: "center",
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "16px",
-        padding: "30px 50px",
-        flexWrap: "wrap",
-        justifyContent: "center",
-    },
-    stat: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: "4px",
-    },
-    statNumber: {
-        fontSize: "28px",
-        fontWeight: "800",
-        color: "#22c55e",
-    },
-    statLabel: {
-        fontSize: "13px",
-        color: "#64748b",
-    },
-    statDivider: {
-        width: "1px",
-        height: "40px",
-        background: "#334155",
-    },
 };
 
 export default Landing;

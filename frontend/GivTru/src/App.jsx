@@ -7,7 +7,7 @@ import CampaignerDashboard from "./pages/CampaignerDashboard";
 import BoardDashboard from "./pages/BoardDashboard";
 import Navbar from "./components/Navbar";
 import BoardHome from "./pages/BoardHome";
-import WelcomeModal from "./components/WelcomeModal";
+// import WelcomeModal from "./components/WelcomeModal";
 import { useState, useEffect } from "react";
 
 function App() {
@@ -25,7 +25,7 @@ function App() {
     };
   return (
     <>
-    {showWelcome && <WelcomeModal onAgree={handleAgree} />}
+    {/* {showWelcome && <WelcomeModal onAgree={handleAgree} />} */}
     <BrowserRouter>
       <Navbar />
       <Routes>

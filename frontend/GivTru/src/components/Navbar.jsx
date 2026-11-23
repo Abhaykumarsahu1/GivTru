@@ -1,180 +1,159 @@
 import { useWallet } from "../context/WalletContext";
 import { useNavigate, useLocation } from "react-router-dom";
 import { NETWORKS } from "../contracts/networks";
+import GivTru from "../assets/GivTru.png";
+
+const LINKS = [
+    { path: "/donate",    label: "Browse Campaigns" },
+    { path: "/register",  label: "Start Campaign" },
+    { path: "/dashboard", label: "My Dashboard" },
+];
+
+const css = `
+.gt-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 14px var(--page-gutter);
+    background: #ffffff;               /* was rgba(255,255,255,0.92) */
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+.gt-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 24px;
+    font-weight: 800;
+    color: #16a34a;
+    letter-spacing: -0.01em;
+}
+.gt-nav-links { display: flex; align-items: center; gap: 6px; }
+.gt-nav-link {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 8px 14px;
+    cursor: pointer;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-muted);
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s;
+}
+.gt-nav-link:hover { color: var(--text); border-bottom-color: var(--border-strong); }
+.gt-nav-link.is-active { color: var(--primary-ink); border-bottom-color: var(--primary); }
+.gt-nav-link.is-board.is-active { color: #b45309; border-bottom-color: #f59e0b; }
+.gt-nav-right { display: flex; align-items: center; gap: 12px; }
+.gt-select {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    padding: 8px 12px;
+    font-size: 13px;
+    cursor: pointer;
+}
+.gt-select:hover { border-color: var(--primary); }
+.gt-address {
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    background: var(--surface-alt);
+    padding: 7px 12px;
+    border-radius: var(--radius-md);
+}
+@media (max-width: 900px) {
+    .gt-nav { flex-wrap: wrap; }
+    .gt-nav-links { order: 3; width: 100%; overflow-x: auto; }
+}
+@media (max-width: 560px) {
+    .gt-address { display: none; }
+    .gt-nav-right { gap: 8px; }
+}
+`;
 
 const Navbar = () => {
-    const { account, connectWallet, disconnectWallet, shortAddress, loading, isBoardMember, chainId, switchNetwork } = useWallet();
-    const navigate  = useNavigate();
-    const location  = useLocation();
+    const {
+        account, connectWallet, disconnectWallet, shortAddress,
+        loading, isBoardMember, chainId, switchNetwork,
+    } = useWallet();
+    const navigate = useNavigate();
+    const location = useLocation();
 
     const isActive = (path) => location.pathname === path;
 
     return (
-        <nav style={styles.nav}>
-            {/* Logo */}
-            <div style={styles.logo} onClick={() => navigate("/")}>
-                🌱 GivTru
-            </div>
+        <>
+            <style>{css}</style>
+            <nav className="gt-nav">
+                <button className="gt-logo" onClick={() => navigate("/")} aria-label="GivTru home">
+                    <img src={GivTru} alt="" height="34" style={{ display: "block" }} />
+                    GivTru
+                </button>
 
-            {/* Nav Links — only show when connected */}
-            {account && (
-                <div style={styles.navLinks}>
-                    <button
-                        style={{
-                            ...styles.navLink,
-                            color: isActive("/donate") ? "#22c55e" : "#94a3b8",
-                            borderBottom: isActive("/donate") ? "2px solid #22c55e" : "2px solid transparent",
-                        }}
-                        onClick={() => navigate("/donate")}
-                    >
-                        Browse Campaigns
-                    </button>
-                    <button
-                        style={{
-                            ...styles.navLink,
-                            color: isActive("/register") ? "#22c55e" : "#94a3b8",
-                            borderBottom: isActive("/register") ? "2px solid #22c55e" : "2px solid transparent",
-                        }}
-                        onClick={() => navigate("/register")}
-                    >
-                        Start Campaign
-                    </button>
-                    <button
-                        style={{
-                            ...styles.navLink,
-                            color: isActive("/dashboard") ? "#22c55e" : "#94a3b8",
-                            borderBottom: isActive("/dashboard") ? "2px solid #22c55e" : "2px solid transparent",
-                        }}
-                        onClick={() => navigate("/dashboard")}
-                    >
-                        My Dashboard
-                    </button>
-                    {isBoardMember && (
+                {account && (
+                    <div className="gt-nav-links">
+                        {LINKS.map((l) => (
+                            <button
+                                key={l.path}
+                                className={`gt-nav-link${isActive(l.path) ? " is-active" : ""}`}
+                                onClick={() => navigate(l.path)}
+                            >
+                                {l.label}
+                            </button>
+                        ))}
+                        {isBoardMember && (
+                            <button
+                                className={`gt-nav-link is-board${isActive("/board-home") ? " is-active" : ""}`}
+                                onClick={() => navigate("/board-home")}
+                            >
+                                Board Member
+                            </button>
+                        )}
+                    </div>
+                )}
+
+                <div className="gt-nav-right">
+                    {account ? (
+                        <>
+                            <select
+                                className="gt-select"
+                                value={NETWORKS[chainId] ? chainId : ""}
+                                onChange={(e) => switchNetwork(e.target.value)}
+                            >
+                                {!NETWORKS[chainId] && <option value="">Unsupported network</option>}
+                                {Object.values(NETWORKS).map((n) => (
+                                    <option key={n.chainId} value={n.chainId}>{n.name}</option>
+                                ))}
+                            </select>
+                            <span className="gt-address">{shortAddress(account)}</span>
+                            <button className="gt-btn gt-btn-danger" onClick={disconnectWallet}>
+                                Disconnect
+                            </button>
+                        </>
+                    ) : (
                         <button
-                            style={{
-                                ...styles.navLink,
-                                color: isActive("/board-home") ? "#f59e0b" : "#94a3b8",
-                                borderBottom: isActive("/board-home") ? "2px solid #f59e0b" : "2px solid transparent",
-                            }}
-                            onClick={() => navigate("/board-home")}
+                            className="gt-btn gt-btn-primary"
+                            onClick={connectWallet}
+                            disabled={loading}
                         >
-                            Board Member
+                            {loading ? "Connecting..." : "Connect Wallet"}
                         </button>
                     )}
                 </div>
-            )}
-
-            {/* Right side */}
-            <div style={styles.right}>
-                {account ? (
-                    <>
-                    <select
-                        style={styles.networkSelect}
-                        value={NETWORKS[chainId] ? chainId : ""}
-                        onChange={(e) => switchNetwork(e.target.value)}
-                    >
-                        {!NETWORKS[chainId] && <option value="">Unsupported network</option>}
-                        {Object.values(NETWORKS).map((n) => (
-                            <option key={n.chainId} value={n.chainId}>{n.name}</option>
-                        ))}
-                    </select>
-                        <span style={styles.address}>
-                            {shortAddress(account)}
-                        </span>
-                        <button style={styles.disconnectBtn} onClick={disconnectWallet}>
-                            Disconnect
-                        </button>
-                    </>
-                ) : (
-                    <button
-                        style={styles.connectBtn}
-                        onClick={connectWallet}
-                        disabled={loading}
-                    >
-                        {loading ? "Connecting..." : "Connect Wallet"}
-                    </button>
-                )}
-            </div>
-        </nav>
+            </nav>
+        </>
     );
-};
-
-const styles = {
-    nav: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "16px 40px",
-        background: "#0f172a",
-        borderBottom: "1px solid #1e293b",
-        position: "sticky",
-        top: 0,
-        zIndex: 100,
-    },
-    logo: {
-        fontSize: "24px",
-        fontWeight: "bold",
-        color: "#22c55e",
-        cursor: "pointer",
-        fontFamily: "sans-serif",
-    },
-    networkSelect: {
-    background: "#1e293b",
-    color: "#f1f5f9",
-    border: "1px solid #334155",
-    borderRadius: "8px",
-    padding: "8px 12px",
-    fontSize: "13px",
-    cursor: "pointer",
-},
-    navLinks: {
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-    },
-    navLink: {
-        background: "transparent",
-        border: "none",
-        borderBottom: "2px solid transparent",
-        padding: "8px 16px",
-        cursor: "pointer",
-        fontSize: "14px",
-        fontWeight: "600",
-        fontFamily: "sans-serif",
-        transition: "all 0.2s",
-    },
-    right: {
-        display: "flex",
-        alignItems: "center",
-        gap: "16px",
-    },
-    address: {
-        color: "#94a3b8",
-        fontFamily: "monospace",
-        fontSize: "14px",
-        background: "#1e293b",
-        padding: "6px 12px",
-        borderRadius: "8px",
-    },
-    connectBtn: {
-        background: "#22c55e",
-        color: "#000",
-        border: "none",
-        padding: "10px 20px",
-        borderRadius: "8px",
-        fontWeight: "bold",
-        cursor: "pointer",
-        fontSize: "14px",
-    },
-    disconnectBtn: {
-        background: "transparent",
-        color: "#ef4444",
-        border: "1px solid #ef4444",
-        padding: "8px 16px",
-        borderRadius: "8px",
-        cursor: "pointer",
-        fontSize: "14px",
-    },
 };
 
 export default Navbar;
