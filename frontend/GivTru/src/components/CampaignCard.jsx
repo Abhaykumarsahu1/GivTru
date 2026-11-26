@@ -38,16 +38,14 @@ const css = `
 }
 .gt-cc-badge { position: absolute; top: 12px; left: 12px; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12); }
 
-.gt-cc-body { flex: 1; display: flex; flex-direction: column; gap: 12px; padding: 18px; }
+.gt-cc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 18px; }
 .gt-cc-title {
     margin: 0; font-size: 18px; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden; overflow-wrap: anywhere;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .gt-cc-desc {
     margin: 0; font-size: 14px; line-height: 1.55; color: var(--text-muted);
-    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-    overflow: hidden; overflow-wrap: anywhere;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .gt-cc-bar { height: 8px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
 .gt-cc-fill { height: 100%; border-radius: 999px; background: #22c55e; transition: width 0.5s ease; }
