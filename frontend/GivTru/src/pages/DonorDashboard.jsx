@@ -1,550 +1,361 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useContract } from "../hooks/useContract";
 import { useWallet } from "../context/WalletContext";
-import { ethers } from "ethers";
-import { getIPFSUrl } from "../utils/ipfs";
+import { useContract } from "../hooks/useContract";
+import CampaignCard, { CampaignCardSkeleton } from "../components/CampaignCard";
+import { campaignState, percentFunded, formatAmount } from "../utils/campaign";
+
+const css = `
+.gt-br { min-height: calc(100vh - 69px); background: #f8fafc; }
+.gt-br-inner { max-width: 1200px; margin: 0 auto; padding: 36px var(--page-gutter) 64px; }
+
+.gt-br-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+.gt-br-title { margin: 0; font-size: 32px; font-weight: 800; letter-spacing: -0.02em; }
+.gt-br-sub { margin: 6px 0 0; font-size: 15px; color: var(--text-muted); }
+
+.gt-br-toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.gt-br-search { position: relative; flex: 1 1 320px; }
+.gt-br-search > svg { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-dim); pointer-events: none; }
+.gt-br-search input {
+    width: 100%; font: inherit; font-size: 15px; padding: 12px 40px 12px 42px;
+    background: #ffffff; color: var(--text);
+    border: 1px solid var(--border-strong); border-radius: 12px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.gt-br-search input:focus { outline: none; border-color: #22c55e; box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18); }
+.gt-br-clear {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 28px; height: 28px; border: none; border-radius: 8px; background: none;
+    color: var(--text-dim); cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.gt-br-clear:hover { background: var(--surface-alt); color: var(--text); }
+.gt-br-sort { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--text-muted); }
+.gt-br-sort select {
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--text);
+    padding: 11px 12px; background: #ffffff; border: 1px solid var(--border-strong);
+    border-radius: 12px; cursor: pointer;
+}
+.gt-br-sort select:focus { outline: none; border-color: #22c55e; box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18); }
+
+.gt-br-filterbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 16px 0 22px; }
+.gt-br-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.gt-br-chip {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+    background: #ffffff; color: var(--text-muted); border: 1px solid var(--border-strong);
+    cursor: pointer; transition: all 0.15s;
+}
+.gt-br-chip:hover { border-color: #22c55e; color: var(--primary-ink); }
+.gt-br-chip.is-on { background: #22c55e; border-color: #22c55e; color: #052e16; }
+.gt-br-chip small { margin-left: 6px; font-size: 12px; font-weight: 700; opacity: 0.75; }
+.gt-br-count { font-size: 13px; color: var(--text-dim); }
+
+.gt-br-grid { display: grid; gap: 22px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+
+.gt-br-state {
+    display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px;
+    padding: 64px 20px; background: #ffffff; border: 1px dashed var(--border-strong); border-radius: 20px;
+}
+.gt-br-state-icon { width: 56px; height: 56px; border-radius: 16px; background: #dcfce7; color: #15803d; display: flex; align-items: center; justify-content: center; margin-bottom: 4px; }
+.gt-br-state h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.gt-br-state p { margin: 0; max-width: 420px; font-size: 14px; line-height: 1.6; color: var(--text-muted); }
+.gt-br-state .gt-btn { margin-top: 10px; }
+
+.gt-br-warn { margin: 0 0 18px; padding: 12px 16px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; color: #78350f; font-size: 14px; }
+.gt-br-warn button { background: none; border: none; padding: 0; margin-left: 6px; font: inherit; font-weight: 700; color: inherit; text-decoration: underline; cursor: pointer; }
+
+.gt-br-totals {
+    margin-top: 40px; padding: 18px 24px; background: #ffffff; border: 1px solid var(--border); border-radius: 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 16px 32px; flex-wrap: wrap;
+}
+.gt-br-totals-label { font-size: 13px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.gt-br-totals-items { display: flex; gap: 12px 40px; flex-wrap: wrap; }
+.gt-br-total { display: flex; flex-direction: column; gap: 2px; }
+.gt-br-total strong { font-size: 18px; font-weight: 800; }
+.gt-br-total span { font-size: 12.5px; color: var(--text-dim); }
+
+@media (max-width: 640px) {
+    .gt-br-title { font-size: 26px; }
+    .gt-br-head .gt-btn { width: 100%; }
+    .gt-br-sort { width: 100%; }
+    .gt-br-sort select { flex: 1; }
+}
+`;
+
+const Svg = ({ children, size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {children}
+    </svg>
+);
+const ISearch = () => <Svg><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></Svg>;
+const IX = () => <Svg size={16}><path d="M6 6l12 12M18 6L6 18" /></Svg>;
+const IHeart = () => (
+    <Svg size={26}><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" /></Svg>
+);
+
+const FILTERS = [
+    { id: "all",    label: "All",    test: () => true },
+    { id: "active", label: "Active", test: (c, now) => now < c.deadline * 1000 },
+    { id: "funded", label: "Funded", test: (c) => c.goal > 0n && c.raised >= c.goal },
+    { id: "ended",  label: "Ended",  test: (c, now) => now >= c.deadline * 1000 },
+];
+
+const SORTS = {
+    newest:  { label: "Newest first",  fn: () => (a, b) => b.index - a.index },
+    ending:  { label: "Ending soon",   fn: (now) => (a, b) => {
+        const ae = now >= a.deadline * 1000;
+        const be = now >= b.deadline * 1000;
+        if (ae !== be) return ae ? 1 : -1;       // running campaigns first
+        return ae ? b.deadline - a.deadline : a.deadline - b.deadline;
+    } },
+    funded:  { label: "Most funded",   fn: () => (a, b) => percentFunded(b.raised, b.goal) - percentFunded(a.raised, a.goal) },
+    raised:  { label: "Most raised",   fn: () => (a, b) => (b.raised > a.raised ? 1 : b.raised < a.raised ? -1 : 0) },
+};
+
+// re-render every minute so "time left" and the Active/Ended state stay current
+const useNow = (ms = 60000) => {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), ms);
+        return () => clearInterval(id);
+    }, [ms]);
+    return now;
+};
+
+/**
+ * All chain reads live here. Right now they go through the wallet's provider;
+ * switching to a public RPC later only means changing this hook.
+ */
+function useCampaigns() {
+    const { chainId, provider } = useWallet();
+    const { getFactoryContractReadOnly, getCampaignContractReadOnly } = useContract();
+    const [state, setState] = useState({ status: "loading", campaigns: [], failed: 0 });
+    const [reloadKey, setReloadKey] = useState(0);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        (async () => {
+            setState((s) => ({ ...s, status: "loading" }));
+            try {
+                const factory = getFactoryContractReadOnly();
+                if (!factory) {
+                    if (!cancelled) setState({ status: "unsupported", campaigns: [], failed: 0 });
+                    return;
+                }
+
+                const addresses = await factory.getAllCampaigns();
+                const rows = await Promise.all(
+                    addresses.map(async (address, index) => {
+                        try {
+                            const c = getCampaignContractReadOnly(address);
+                            const [title, description, ipfsHash, goal, raised, deadline, campaigner, donorCount] =
+                                await Promise.all([
+                                    c.title(), c.description(), c.ipfsHash(), c.goalAmount(),
+                                    c.totalDonated(), c.deadline(), c.campaigner(), c.getDonorCount(),
+                                ]);
+                            return {
+                                address, index, title, description, ipfsHash,
+                                goal, raised,                       // bigint (wei)
+                                deadline: Number(deadline),         // unix seconds
+                                campaigner,
+                                donorCount: Number(donorCount),
+                            };
+                        } catch (err) {
+                            console.error("Could not load campaign", address, err);
+                            return null;
+                        }
+                    })
+                );
+
+                if (cancelled) return;
+                const ok = rows.filter(Boolean);
+                setState({ status: "ready", campaigns: ok, failed: rows.length - ok.length });
+            } catch (err) {
+                console.error("Could not load campaigns", err);
+                if (!cancelled) setState({ status: "error", campaigns: [], failed: 0 });
+            }
+        })();
+
+        return () => { cancelled = true; };
+        // provider/chainId change whenever the wallet switches network
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chainId, provider, reloadKey]);
+
+    return { ...state, reload: () => setReloadKey((k) => k + 1) };
+}
 
 const DonorDashboard = () => {
     const navigate = useNavigate();
-    const { symbol, chainId } = useWallet();
-    const { getFactoryContractReadOnly, getCampaignContractReadOnly } = useContract();
+    const { symbol, network } = useWallet();
+    const { status, campaigns, failed, reload } = useCampaigns();
+    const now = useNow();
 
-    const [campaigns, setCampaigns]   = useState([]);
-    const [loading, setLoading]       = useState(true);
-    const [error, setError]           = useState(null);
+    const [query, setQuery] = useState("");
+    const [filter, setFilter] = useState("all");
+    const [sort, setSort] = useState("newest");
 
-    // ─────────────────────────────────────────
-    //  FETCH ALL CAMPAIGNS
-    // ─────────────────────────────────────────
-
-    useEffect(() => {
-        fetchCampaigns();
-    }, [chainId]);
-
-    const fetchCampaigns = async () => {
-        try {
-            setLoading(true);
-            setError(null);
-
-            const factory = getFactoryContractReadOnly();
-            if (!factory) { setError("Givtru isn't deployed on this network yet. Switch networks from the navbar."); return; }
-
-            // get all campaign addresses from factory
-            const addresses = await factory.getAllCampaigns();
-            console.log("Campaign addresses:", addresses);
-
-            if (addresses.length === 0) {
-                setCampaigns([]);
-                return;
-            }
-
-            // fetch details for each campaign
-            const campaignData = await Promise.all(
-                addresses.map(async (address) => {
-                    try {
-                        const campaign = getCampaignContractReadOnly(address);
-
-                        const [
-                            title,
-                            description,
-                            goalAmount,
-                            totalDonated,
-                            deadline,
-                            status,
-                            campaigner,
-                            donorCount,
-                            ipfsHash,
-                        ] = await Promise.all([
-                            campaign.title(),
-                            campaign.description(),
-                            campaign.goalAmount(),
-                            campaign.totalDonated(),
-                            campaign.deadline(),
-                            campaign.status(),
-                            campaign.campaigner(),
-                            campaign.getDonorCount(),
-                            campaign.ipfsHash(),
-                        ]);
-
-                        return {
-                            address,
-                            title,
-                            description,
-                            ipfsHash,  
-                            goalAmount: ethers.formatEther(goalAmount),
-                            totalDonated: ethers.formatEther(totalDonated),
-                            deadline: new Date(Number(deadline) * 1000),
-                            status: Number(status), // 0=Active, 1=Expired, 2=Closed
-                            campaigner,
-                            donorCount: Number(donorCount),
-                        };
-                    } catch (err) {
-                        console.error("Error fetching campaign:", address, err);
-                        return null;
-                    }
-                })
-            );
-
-            // filter out any failed fetches
-            setCampaigns(campaignData.filter(Boolean));
-
-        } catch (err) {
-            console.error(err);
-            setError("Failed to load campaigns");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // ─────────────────────────────────────────
-    //  HELPERS
-    // ─────────────────────────────────────────
-
-    const getStatusLabel = (status) => {
-        switch (status) {
-            case 0: return { label: "Active",   color: "#22c55e", bg: "#052e16" };
-            case 1: return { label: "Expired",  color: "#f59e0b", bg: "#451a03" };
-            case 2: return { label: "Closed",   color: "#ef4444", bg: "#450a0a" };
-            default: return { label: "Unknown", color: "#94a3b8", bg: "#1e293b" };
-        }
-    };
-
-    const getProgressPercent = (donated, goal) => {
-        const pct = (parseFloat(donated) / parseFloat(goal)) * 100;
-        return Math.min(pct, 100).toFixed(1);
-    };
-
-    const getTimeLeft = (deadline) => {
-        const now  = new Date();
-        const diff = deadline - now;
-        if (diff <= 0) return "Expired";
-        const days    = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours   = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        if (days > 0) return `${days}d ${hours}h left`;
-        return `${hours}h left`;
-    };
-
-    // ─────────────────────────────────────────
-    //  RENDER
-    // ─────────────────────────────────────────
-
-    if (loading) return (
-        <div style={styles.centered}>
-            <div style={styles.spinner}>⏳</div>
-            <p style={styles.loadingText}>Loading campaigns from blockchain...</p>
-        </div>
+    const counts = useMemo(
+        () => Object.fromEntries(FILTERS.map((f) => [f.id, campaigns.filter((c) => f.test(c, now)).length])),
+        [campaigns, now]
     );
 
-    if (error) return (
-        <div style={styles.centered}>
-            <p style={styles.errorText}>⚠️ {error}</p>
-            <button style={styles.retryBtn} onClick={fetchCampaigns}>Retry</button>
-        </div>
-    );
+    const visible = useMemo(() => {
+        const q = query.trim().toLowerCase();
+        const test = FILTERS.find((f) => f.id === filter).test;
+        return campaigns
+            .filter((c) => test(c, now))
+            .filter((c) =>
+                !q ||
+                c.title.toLowerCase().includes(q) ||
+                c.description.toLowerCase().includes(q) ||
+                c.campaigner.toLowerCase().includes(q) ||
+                c.address.toLowerCase().includes(q)
+            )
+            .sort(SORTS[sort].fn(now));
+    }, [campaigns, query, filter, sort, now]);
+
+    const totals = useMemo(() => ({
+        campaigns: campaigns.length,
+        active: campaigns.filter((c) => campaignState(c, now) === "active" || campaignState(c, now) === "goal_reached").length,
+        donors: campaigns.reduce((s, c) => s + c.donorCount, 0),
+        raised: campaigns.reduce((s, c) => s + c.raised, 0n),
+    }), [campaigns, now]);
+
+    const clearFilters = () => { setQuery(""); setFilter("all"); };
+
+    let body;
+    if (status === "loading") {
+        body = (
+            <div className="gt-br-grid">
+                {Array.from({ length: 6 }, (_, i) => <CampaignCardSkeleton key={i} />)}
+            </div>
+        );
+    } else if (status === "unsupported") {
+        body = (
+            <div className="gt-br-state">
+                <h2>GivTru isn't on this network yet</h2>
+                <p>Use the network switcher in the navbar to pick Arbitrum Sepolia or MST.</p>
+            </div>
+        );
+    } else if (status === "error") {
+        body = (
+            <div className="gt-br-state">
+                <h2>Couldn't load campaigns</h2>
+                <p>Something went wrong while reading from the blockchain. Check your connection and try again.</p>
+                <button className="gt-btn gt-btn-primary" onClick={reload}>Try again</button>
+            </div>
+        );
+    } else if (campaigns.length === 0) {
+        body = (
+            <div className="gt-br-state">
+                <div className="gt-br-state-icon"><IHeart /></div>
+                <h2>No campaigns on {network?.name || "this network"} yet</h2>
+                <p>Be the first to launch one, or switch networks to see campaigns elsewhere.</p>
+                <button className="gt-btn gt-btn-primary" onClick={() => navigate("/register")}>Start a campaign</button>
+            </div>
+        );
+    } else if (visible.length === 0) {
+        body = (
+            <div className="gt-br-state">
+                <div className="gt-br-state-icon"><ISearch /></div>
+                <h2>No campaigns match</h2>
+                <p>Try a different search term or filter.</p>
+                <button className="gt-btn gt-btn-secondary" onClick={clearFilters}>Clear filters</button>
+            </div>
+        );
+    } else {
+        body = (
+            <div className="gt-br-grid">
+                {visible.map((c) => <CampaignCard key={c.address} campaign={c} symbol={symbol} now={now} />)}
+            </div>
+        );
+    }
+
+    const showControls = status === "ready" && campaigns.length > 0;
 
     return (
-        <div style={styles.container}>
-
-            {/* Header */}
-            <div style={styles.header}>
-                <h1 style={styles.title}>💚 All Campaigns</h1>
-                <p style={styles.subtitle}>
-                    Browse and donate to verified on-chain campaigns
-                </p>
-                <button style={styles.refreshBtn} onClick={fetchCampaigns}>
-                    🔄 Refresh
-                </button>
-            </div>
-
-            {/* Empty state */}
-            {campaigns.length === 0 ? (
-                <div style={styles.emptyState}>
-                    <div style={styles.emptyIcon}>📭</div>
-                    <h2 style={styles.emptyTitle}>No campaigns yet</h2>
-                    <p style={styles.emptyDesc}>
-                        Be the first to launch a campaign!
-                    </p>
-                    <button
-                        style={styles.primaryBtn}
-                        onClick={() => navigate("/register")}
-                    >
-                        Start a Campaign
-                    </button>
-                </div>
-            ) : (
-                <>
-                    {/* Stats bar */}
-                    <div style={styles.statsBar}>
-                        <div style={styles.stat}>
-                            <span style={styles.statNum}>{campaigns.length}</span>
-                            <span style={styles.statLabel}>Total Campaigns</span>
-                        </div>
-                        <div style={styles.statDivider} />
-                        <div style={styles.stat}>
-                            <span style={styles.statNum}>
-                                {campaigns.filter(c => c.status === 0).length}
-                            </span>
-                            <span style={styles.statLabel}>Active</span>
-                        </div>
-                        <div style={styles.statDivider} />
-                        <div style={styles.stat}>
-                            <span style={styles.statNum}>
-                                {campaigns.reduce((sum, c) => sum + c.donorCount, 0)}
-                            </span>
-                            <span style={styles.statLabel}>Total Donors</span>
-                        </div>
-                        <div style={styles.statDivider} />
-                        <div style={styles.stat}>
-                            <span style={styles.statNum}>
-                                {campaigns.reduce((sum, c) => sum + parseFloat(c.totalDonated), 0).toFixed(3)} {symbol}
-                            </span>
-                            <span style={styles.statLabel}>Total Raised</span>
-                        </div>
+        <div className="gt-br">
+            <style>{css}</style>
+            <div className="gt-br-inner">
+                <header className="gt-br-head">
+                    <div>
+                        <h1 className="gt-br-title">Browse campaigns</h1>
+                        <p className="gt-br-sub">Every donation and every withdrawal is recorded on-chain.</p>
                     </div>
+                </header>
 
-                    {/* Campaign Grid */}
-                    <div style={styles.grid}>
-                        {campaigns.map((campaign) => {
-                            const statusInfo = getStatusLabel(campaign.status);
-                            const progress   = getProgressPercent(campaign.totalDonated, campaign.goalAmount);
-                            const timeLeft   = getTimeLeft(campaign.deadline);
-
-                            return (
-                                <div key={campaign.address} style={styles.card}>
-                                    {getIPFSUrl(campaign.ipfsHash) && (
-                                     <img
-                                         src={getIPFSUrl(campaign.ipfsHash)}
-                                         alt={campaign.title}
-                                           style={{
-                                             width: "calc(100% + 56px)",
-                                            height: "180px",
-                                            objectFit: "cover",
-                                            borderRadius: "10px 10px 0 0",
-                                            margin: "-28px -28px 0 -28px",
-                                            display: "block",
-                                        }}
-                                    />
-                                )}
-                                    {/* Status badge */}
-                                    <div style={{
-                                        ...styles.badge,
-                                        color: statusInfo.color,
-                                        background: statusInfo.bg,
-                                        border: `1px solid ${statusInfo.color}`,
-                                    }}>
-                                        {statusInfo.label}
-                                    </div>
-
-                                    {/* Title */}
-                                    <h2 style={styles.cardTitle}>{campaign.title}</h2>
-
-                                    {/* Description */}
-                                    <p style={styles.cardDesc}>
-                                        {campaign.description.length > 120
-                                            ? campaign.description.slice(0, 120) + "..."
-                                            : campaign.description}
-                                    </p>
-
-                                    {/* Progress bar */}
-                                    <div style={styles.progressSection}>
-                                        <div style={styles.progressBar}>
-                                            <div style={{
-                                                ...styles.progressFill,
-                                                width: `${progress}%`,
-                                                background: progress >= 100 ? "#22c55e" : "#3b82f6",
-                                            }} />
-                                        </div>
-                                        <div style={styles.progressLabels}>
-                                            <span style={styles.raised}>
-                                                {campaign.totalDonated} {symbol} raised
-                                            </span>
-                                            <span style={styles.goal}>
-                                                Goal: {campaign.goalAmount} {symbol}
-                                            </span>
-                                        </div>
-                                        <div style={styles.progressPct}>
-                                            {progress}% funded
-                                        </div>
-                                    </div>
-
-                                    {/* Meta info */}
-                                    <div style={styles.metaRow}>
-                                        <div style={styles.metaItem}>
-                                            <span style={styles.metaIcon}>👥</span>
-                                            <span style={styles.metaText}>
-                                                {campaign.donorCount} donors
-                                            </span>
-                                        </div>
-                                        <div style={styles.metaItem}>
-                                            <span style={styles.metaIcon}>⏰</span>
-                                            <span style={styles.metaText}>{timeLeft}</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Campaigner address */}
-                                    <div style={styles.campaignerRow}>
-                                        <span style={styles.campaignerLabel}>By: </span>
-                                        <span style={styles.campaignerAddr}>
-                                            {campaign.campaigner.slice(0, 6)}...{campaign.campaigner.slice(-4)}
-                                        </span>
-                                    </div>
-
-                                    {/* Donate button */}
-                                    <button
-                                        style={{
-                                            ...styles.donateBtn,
-                                            opacity: campaign.status !== 0 ? 0.5 : 1,
-                                            cursor: campaign.status !== 0 ? "not-allowed" : "pointer",
-                                        }}
-                                        onClick={() => campaign.status === 0 && navigate(`/campaign/${campaign.address}`)}
-                                        disabled={campaign.status !== 0}
-                                    >
-                                        {campaign.status === 0 ? "💚 Donate Now" : "Campaign Ended"}
+                {showControls && (
+                    <>
+                        <div className="gt-br-toolbar">
+                            <div className="gt-br-search">
+                                <ISearch />
+                                <input
+                                    type="search"
+                                    placeholder="Search by title, description or address"
+                                    value={query}
+                                    onChange={(e) => setQuery(e.target.value)}
+                                    aria-label="Search campaigns"
+                                />
+                                {query && (
+                                    <button className="gt-br-clear" onClick={() => setQuery("")} aria-label="Clear search">
+                                        <IX />
                                     </button>
+                                )}
+                            </div>
+                            <label className="gt-br-sort">
+                                Sort by
+                                <select value={sort} onChange={(e) => setSort(e.target.value)}>
+                                    {Object.entries(SORTS).map(([id, s]) => (
+                                        <option key={id} value={id}>{s.label}</option>
+                                    ))}
+                                </select>
+                            </label>
+                        </div>
 
-                                </div>
-                            );
-                        })}
-                    </div>
-                </>
-            )}
+                        <div className="gt-br-filterbar">
+                            <div className="gt-br-chips">
+                                {FILTERS.map((f) => (
+                                    <button
+                                        key={f.id}
+                                        className={`gt-br-chip${filter === f.id ? " is-on" : ""}`}
+                                        onClick={() => setFilter(f.id)}
+                                        aria-pressed={filter === f.id}
+                                    >
+                                        {f.label}<small>{counts[f.id]}</small>
+                                    </button>
+                                ))}
+                            </div>
+                            <span className="gt-br-count">
+                                Showing {visible.length} of {campaigns.length}
+                            </span>
+                        </div>
+                    </>
+                )}
+
+                {status === "ready" && failed > 0 && (
+                    <p className="gt-br-warn">
+                        {failed} campaign{failed === 1 ? "" : "s"} couldn't be loaded.
+                        <button onClick={reload}>Retry</button>
+                    </p>
+                )}
+
+                {body}
+
+                {showControls && (
+                    <section className="gt-br-totals" aria-label="Network totals">
+                        <span className="gt-br-totals-label">On {network?.name || "this network"}</span>
+                        <div className="gt-br-totals-items">
+                            <div className="gt-br-total"><strong>{totals.campaigns}</strong><span>Campaigns</span></div>
+                            <div className="gt-br-total"><strong>{totals.active}</strong><span>Active</span></div>
+                            <div className="gt-br-total"><strong>{totals.donors}</strong><span>Donors across campaigns</span></div>
+                            <div className="gt-br-total"><strong>{formatAmount(totals.raised)} {symbol}</strong><span>Total donated</span></div>
+                        </div>
+                    </section>
+                )}
+            </div>
         </div>
     );
-};
-
-const styles = {
-    container: {
-        minHeight: "100vh",
-        background: "#0f172a",
-        padding: "40px 20px",
-        fontFamily: "sans-serif",
-        maxWidth: "1200px",
-        margin: "0 auto",
-    },
-    centered: {
-        minHeight: "80vh",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        gap: "16px",
-        background: "#0f172a",
-        fontFamily: "sans-serif",
-    },
-    header: {
-        textAlign: "center",
-        marginBottom: "40px",
-    },
-    title: {
-        fontSize: "36px",
-        fontWeight: "800",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    subtitle: {
-        color: "#94a3b8",
-        marginTop: "8px",
-        fontSize: "16px",
-    },
-    refreshBtn: {
-        marginTop: "16px",
-        background: "transparent",
-        color: "#94a3b8",
-        border: "1px solid #334155",
-        padding: "8px 20px",
-        borderRadius: "8px",
-        cursor: "pointer",
-        fontSize: "14px",
-    },
-    statsBar: {
-        display: "flex",
-        gap: "40px",
-        alignItems: "center",
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "12px",
-        padding: "20px 40px",
-        marginBottom: "40px",
-        flexWrap: "wrap",
-        justifyContent: "center",
-    },
-    stat: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: "4px",
-    },
-    statNum: {
-        fontSize: "24px",
-        fontWeight: "800",
-        color: "#22c55e",
-    },
-    statLabel: {
-        fontSize: "13px",
-        color: "#64748b",
-    },
-    statDivider: {
-        width: "1px",
-        height: "40px",
-        background: "#334155",
-    },
-    grid: {
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))",
-        gap: "24px",
-    },
-    card: {
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "16px",
-        padding: "28px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-        transition: "transform 0.2s",
-        cursor: "default",
-    },
-    badge: {
-        display: "inline-block",
-        padding: "4px 12px",
-        borderRadius: "20px",
-        fontSize: "12px",
-        fontWeight: "700",
-        width: "fit-content",
-    },
-    cardTitle: {
-        fontSize: "20px",
-        fontWeight: "700",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    cardDesc: {
-        color: "#94a3b8",
-        fontSize: "14px",
-        lineHeight: 1.6,
-        margin: 0,
-    },
-    progressSection: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-    },
-    progressBar: {
-        background: "#0f172a",
-        borderRadius: "100px",
-        height: "8px",
-        overflow: "hidden",
-    },
-    progressFill: {
-        height: "100%",
-        borderRadius: "100px",
-        transition: "width 0.5s ease",
-    },
-    progressLabels: {
-        display: "flex",
-        justifyContent: "space-between",
-        fontSize: "13px",
-    },
-    raised: {
-        color: "#22c55e",
-        fontWeight: "600",
-    },
-    goal: {
-        color: "#64748b",
-    },
-    progressPct: {
-        fontSize: "12px",
-        color: "#64748b",
-    },
-    metaRow: {
-        display: "flex",
-        gap: "16px",
-    },
-    metaItem: {
-        display: "flex",
-        alignItems: "center",
-        gap: "6px",
-    },
-    metaIcon: {
-        fontSize: "14px",
-    },
-    metaText: {
-        color: "#94a3b8",
-        fontSize: "13px",
-    },
-    campaignerRow: {
-        fontSize: "13px",
-        color: "#64748b",
-    },
-    campaignerLabel: {
-        color: "#64748b",
-    },
-    campaignerAddr: {
-        color: "#94a3b8",
-        fontFamily: "monospace",
-    },
-    donateBtn: {
-        background: "#22c55e",
-        color: "#000",
-        border: "none",
-        padding: "12px",
-        borderRadius: "10px",
-        fontWeight: "bold",
-        fontSize: "15px",
-        marginTop: "auto",
-    },
-    emptyState: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: "16px",
-        padding: "80px 20px",
-    },
-    emptyIcon: {
-        fontSize: "64px",
-    },
-    emptyTitle: {
-        color: "#f1f5f9",
-        fontSize: "24px",
-        margin: 0,
-    },
-    emptyDesc: {
-        color: "#94a3b8",
-        fontSize: "16px",
-        margin: 0,
-    },
-    primaryBtn: {
-        background: "#22c55e",
-        color: "#000",
-        border: "none",
-        padding: "14px 28px",
-        borderRadius: "10px",
-        fontWeight: "bold",
-        cursor: "pointer",
-        fontSize: "16px",
-    },
-    loadingText: {
-        color: "#94a3b8",
-        fontSize: "16px",
-    },
-    errorText: {
-        color: "#ef4444",
-        fontSize: "16px",
-    },
-    retryBtn: {
-        background: "#1e293b",
-        color: "#f1f5f9",
-        border: "1px solid #334155",
-        padding: "10px 24px",
-        borderRadius: "8px",
-        cursor: "pointer",
-        fontSize: "14px",
-    },
-    spinner: {
-        fontSize: "48px",
-        animation: "spin 1s linear infinite",
-    },
 };
 
 export default DonorDashboard;

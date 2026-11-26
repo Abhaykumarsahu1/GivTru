@@ -1,19 +1,19 @@
 import { useWallet } from "../context/WalletContext";
 import { useNavigate, useLocation } from "react-router-dom";
-import { NETWORKS, DEFAULT_CHAIN_ID } from "../contracts/networks";
+import { NETWORKS } from "../contracts/networks";
 import GivTru from "../assets/GivTru.png";
 
 const LINKS = [
     { path: "/donate",    label: "Browse Campaigns" },
     { path: "/register",  label: "Start Campaign" },
-    { path: "/dashboard", label: "My Dashboard" },
+    { path: "/dashboard", label: "My Campaigns" },
 ];
 
 const css = `
-/* 3 columns: logo (left) | links (centered) | wallet controls (right) */
+/* logo (left) | links (centered in the free space) | wallet controls (right) */
 .gt-nav {
     display: grid;
-    grid-template-columns: 1fr auto 1fr;
+    grid-template-columns: auto 1fr auto;
     align-items: center;
     gap: 16px;
     padding: 14px var(--page-gutter);
@@ -25,7 +25,6 @@ const css = `
 }
 .gt-logo {
     grid-column: 1;
-    justify-self: start;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -64,11 +63,39 @@ const css = `
 .gt-nav-link.is-board.is-active { color: #b45309; border-bottom-color: #f59e0b; }
 .gt-nav-right {
     grid-column: 3;
-    justify-self: end;
     display: flex;
     align-items: center;
     gap: 12px;
 }
+
+/* network pill: status dot + chain name (native select inside, so it works everywhere) */
+.gt-net {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 8px 0 12px;
+    background: #ffffff;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.gt-net:hover { border-color: var(--primary); }
+.gt-net:focus-within { box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.25); }
+.gt-net-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+.gt-net.is-bad { border-color: #f59e0b; background: #fffbeb; }
+.gt-net.is-bad .gt-net-dot { background: #f59e0b; }
+.gt-net select {
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 4px;
+    cursor: pointer;
+    outline: none;
+}
+
 .gt-address {
     color: var(--text-muted);
     font-family: var(--font-mono);
@@ -77,19 +104,6 @@ const css = `
     padding: 7px 12px;
     border-radius: var(--radius-md);
 }
-/* only shown when the wallet is on a chain the app doesn't support */
-.gt-wrongnet {
-    background: #fef3c7;
-    color: #92400e;
-    border: 1px solid #f59e0b;
-    border-radius: var(--radius-md);
-    padding: 7px 12px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.15s;
-}
-.gt-wrongnet:hover { background: #fde68a; }
 
 @media (max-width: 900px) {
     .gt-nav { display: flex; flex-wrap: wrap; justify-content: space-between; }
@@ -111,6 +125,7 @@ const Navbar = () => {
 
     const isActive = (path) => location.pathname === path;
     const unsupported = account && !NETWORKS[chainId];
+    if (location.pathname === "/register") return null;
 
     return (
         <>
@@ -145,17 +160,20 @@ const Navbar = () => {
                 <div className="gt-nav-right">
                     {account ? (
                         <>
-                            {unsupported && (
-                                <button
-                                    className="gt-wrongnet"
-                                    onClick={() => switchNetwork(DEFAULT_CHAIN_ID)}
+                            <label className={`gt-net${unsupported ? " is-bad" : ""}`} title="Network">
+                                <span className="gt-net-dot" />
+                                <select
+                                    value={NETWORKS[chainId] ? chainId : ""}
+                                    onChange={(e) => switchNetwork(e.target.value)}
+                                    aria-label="Network"
                                 >
-                                    Wrong network: switch to {NETWORKS[DEFAULT_CHAIN_ID].name}
-                                </button>
-                            )}
-                            <span className="gt-address" title={NETWORKS[chainId]?.name || "Unsupported network"}>
-                                {shortAddress(account)}
-                            </span>
+                                    {unsupported && <option value="">Unsupported network</option>}
+                                    {Object.values(NETWORKS).map((n) => (
+                                        <option key={n.chainId} value={n.chainId}>{n.name}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <span className="gt-address">{shortAddress(account)}</span>
                             <button className="gt-btn gt-btn-danger" onClick={disconnectWallet}>
                                 Disconnect
                             </button>
