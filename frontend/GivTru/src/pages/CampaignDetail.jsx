@@ -1,891 +1,860 @@
-import { useState, useEffect } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { useContract } from "../hooks/useContract";
-import { useWallet } from "../context/WalletContext";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { ethers } from "ethers";
+import { useWallet } from "../context/WalletContext";
+import { useContract } from "../hooks/useContract";
+import { useToast } from "../context/ToastContext";
+import { getIPFSUrl } from "../utils/ipfs";
+import TxLink from "../components/TxLink";
+import {
+    DEFAULT_IPFS_HASH, STATE_META, campaignState, percentFunded, percentLabel,
+    formatAmount, timeLeft, timeAgo, formatDateTime, shortAddress, approvalsNeeded,
+} from "../utils/campaign";
+
+const MIN_DONATION_WEI = ethers.parseEther("0.01"); // MIN_DONATION in Campaign.sol
+const QUICK_AMOUNTS = ["0.01", "0.05", "0.1", "0.5"];
+const FALLBACK_GATEWAYS = ["https://ipfs.io/ipfs/", "https://dweb.link/ipfs/"];
+const MAX_ROWS = 50;   // donations shown in the table (timestamps are looked up for these)
+const PAGE = 10;       // rows revealed per "Show more"
+
+const css = `
+.gt-cd { min-height: calc(100vh - 69px); background: #f8fafc; color: var(--text); }
+.gt-cd-inner { max-width: 1200px; margin: 0 auto; padding: 24px var(--page-gutter) 72px; }
+.gt-cd-back {
+    display: inline-flex; align-items: center; gap: 8px; margin-bottom: 12px;
+    padding: 8px 14px 8px 8px; border: none; border-radius: 10px; background: none; cursor: pointer;
+    font: inherit; font-size: 14px; font-weight: 600; color: var(--text-muted);
+    transition: background 0.15s, color 0.15s;
+}
+.gt-cd-back:hover { background: var(--surface-alt); color: var(--text); }
+
+.gt-cd-layout {
+    display: grid; gap: 24px; align-items: start;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-areas: "top side" "rest side";
+}
+.gt-cd-top, .gt-cd-rest { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.gt-cd-top { grid-area: top; }
+.gt-cd-rest { grid-area: rest; }
+.gt-cd-side { grid-area: side; display: flex; flex-direction: column; gap: 20px; position: sticky; top: 92px; min-width: 0; }
+@media (max-width: 980px) {
+    .gt-cd-layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "side" "rest"; }
+    .gt-cd-side { position: static; }
+}
+
+.gt-cd-card { background: #ffffff; border: 1px solid var(--border); border-radius: 16px; padding: 24px; }
+.gt-cd-card h2 { margin: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.01em; }
+.gt-cd-sechead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
+.gt-cd-count { font-size: 13px; font-weight: 700; color: var(--text-dim); background: var(--surface-alt); padding: 3px 10px; border-radius: 999px; }
+.gt-cd-muted { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-muted); }
+.gt-cd-mono { font-family: var(--font-mono); }
+
+/* hero */
+.gt-cd-hero { padding: 0; overflow: hidden; }
+.gt-cd-cover { position: relative; height: 280px; background: #f1f5f9; }
+.gt-cd-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 0.25s; }
+.gt-cd-cover img.is-loaded { opacity: 1; }
+.gt-cd-cover-skel { position: absolute; inset: 0; border-radius: 0; }
+.gt-cd-cover-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #dcfce7 0%, #e0e7ff 100%); }
+.gt-cd-cover-ph span { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.9); color: #16a34a; box-shadow: 0 6px 18px rgba(15, 23, 42, 0.10); }
+.gt-cd-hero-body { padding: 26px; display: flex; flex-direction: column; gap: 16px; }
+.gt-cd-title { margin: 0; font-size: 30px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; overflow-wrap: anywhere; }
+.gt-cd-by { margin: 0; font-size: 14px; color: var(--text-muted); }
+.gt-cd-by code { font-family: var(--font-mono); font-size: 13px; }
+.gt-cd-desc { margin: 0; font-size: 15px; line-height: 1.75; color: var(--text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+.gt-cd-raise { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.gt-cd-raised { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; color: var(--primary-ink); }
+.gt-cd-raised small { margin-left: 6px; font-size: 15px; font-weight: 600; color: var(--text-dim); }
+.gt-cd-pct { font-size: 15px; font-weight: 800; }
+.gt-cd-bar { height: 10px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.gt-cd-fill { height: 100%; border-radius: 999px; background: #22c55e; transition: width 0.5s ease; }
+.gt-cd-fill.is-full { background: #16a34a; }
+.gt-cd-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.gt-cd-tile { display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; background: #f8fafc; border: 1px solid var(--border); border-radius: 12px; }
+.gt-cd-tile span { font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.gt-cd-tile strong { font-size: 17px; font-weight: 800; }
+@media (max-width: 640px) {
+    .gt-cd-cover { height: 200px; }
+    .gt-cd-title { font-size: 24px; }
+    .gt-cd-hero-body { padding: 20px; }
+    .gt-cd-tiles { grid-template-columns: 1fr 1fr; }
+}
+
+/* withdrawal requests */
+.gt-cd-reqs { display: flex; flex-direction: column; gap: 14px; margin-top: 16px; }
+.gt-cd-req { border: 1px solid var(--border); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.gt-cd-req-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.gt-cd-req-head > div { display: flex; align-items: center; gap: 10px; }
+.gt-cd-req-n { font-size: 13px; font-weight: 700; color: var(--text-dim); }
+.gt-cd-req-amt { font-size: 18px; font-weight: 800; }
+.gt-cd-req-desc { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-muted); overflow-wrap: anywhere; }
+.gt-cd-vote { display: flex; flex-direction: column; gap: 6px; }
+.gt-cd-vote-row { display: flex; justify-content: space-between; font-size: 13px; font-weight: 600; }
+.gt-cd-vote-row span:last-child { color: var(--text-dim); font-weight: 500; }
+.gt-cd-vbar { height: 6px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.gt-cd-vbar i { display: block; height: 100%; border-radius: 999px; }
+.gt-cd-voters { display: flex; flex-wrap: wrap; gap: 6px; }
+.gt-cd-voter { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; background: #f8fafc; border: 1px solid var(--border); font-size: 12px; color: var(--text-muted); }
+.gt-cd-voter i { width: 7px; height: 7px; border-radius: 50%; }
+.gt-cd-empty { margin-top: 14px; padding: 28px 20px; text-align: center; font-size: 14px; color: var(--text-muted); background: #f8fafc; border: 1px dashed var(--border-strong); border-radius: 14px; }
+
+/* people */
+.gt-cd-people { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 12px; }
+.gt-cd-people h3 { margin: 0 0 10px; font-size: 13px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.gt-cd-person { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.gt-cd-person:last-child { border-bottom: none; }
+.gt-cd-person .n { width: 22px; font-weight: 700; color: var(--text-dim); }
+.gt-cd-person code { flex: 1; min-width: 0; font-family: var(--font-mono); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; }
+.gt-cd-tag { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: #dcfce7; color: var(--primary-ink); }
+.gt-cd-tag.is-warn { background: #fef3c7; color: #92400e; }
+@media (max-width: 720px) { .gt-cd-people { grid-template-columns: 1fr; gap: 18px; } }
+
+/* sidebar */
+.gt-cd-action { border: 2px solid #22c55e; box-shadow: 0 14px 34px rgba(34, 197, 94, 0.12); display: flex; flex-direction: column; gap: 14px; }
+.gt-cd-action.is-warn { border-color: #f59e0b; box-shadow: 0 14px 34px rgba(245, 158, 11, 0.12); }
+.gt-cd-action.is-neutral { border: 1px solid var(--border); box-shadow: none; }
+.gt-cd-label { font-size: 14px; font-weight: 700; }
+.gt-cd-affix { position: relative; }
+.gt-cd-input {
+    width: 100%; font: inherit; font-size: 20px; font-weight: 700; padding: 13px 76px 13px 16px;
+    color: var(--text); background: #ffffff; border: 1px solid var(--border-strong); border-radius: 12px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+.gt-cd-input::placeholder { color: #94a3b8; font-weight: 500; }
+.gt-cd-input:focus { outline: none; border-color: #22c55e; box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18); }
+.gt-cd-input.is-error { border-color: #dc2626; box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.1); }
+.gt-cd-affix > span { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font-size: 13px; font-weight: 700; color: var(--text-dim); pointer-events: none; }
+.gt-cd-err { margin: 0; font-size: 13px; color: #b91c1c; }
+.gt-cd-hint { margin: 0; font-size: 13px; color: var(--text-dim); line-height: 1.5; }
+.gt-cd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.gt-cd-chip {
+    font: inherit; font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+    background: #ffffff; color: var(--text-muted); border: 1px solid var(--border-strong); cursor: pointer; transition: all 0.15s;
+}
+.gt-cd-chip:hover:not(:disabled) { border-color: #22c55e; color: var(--primary-ink); background: #f0fdf4; }
+.gt-cd-action .gt-btn { width: 100%; padding: 14px; font-size: 16px; border-radius: 12px; }
+.gt-cd-warnbtn { background: #f59e0b; color: #1c1100; }
+.gt-cd-warnbtn:hover:not(:disabled) { background: #d97706; box-shadow: 0 6px 16px rgba(245, 158, 11, 0.35); transform: translateY(-1px); }
+.gt-cd-fine { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--text-dim); }
+
+.gt-cd-notice { display: flex; gap: 12px; padding: 14px 16px; border-radius: 14px; font-size: 14px; line-height: 1.6; background: #f0fdf4; border: 1px solid #bbf7d0; color: #14532d; }
+.gt-cd-notice.is-warn { background: #fffbeb; border-color: #fde68a; color: #78350f; }
+.gt-cd-notice.is-info { background: #f8fafc; border-color: var(--border); color: var(--text-muted); }
+.gt-cd-notice svg { flex-shrink: 0; margin-top: 3px; }
+.gt-cd-notice p { margin: 0; }
+.gt-cd-notice strong { display: block; }
+.gt-cd-kv { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 12px 14px; border-radius: 12px; background: #f8fafc; border: 1px solid var(--border); font-size: 14px; }
+.gt-cd-kv strong { font-size: 17px; }
+.gt-cd-addr { padding: 12px 14px; border-radius: 12px; background: #f8fafc; border: 1px solid var(--border); font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); word-break: break-all; }
+
+/* recent donors (full width) */
+.gt-cd-donors { margin-top: 24px; }
+.gt-cd-table { margin-top: 14px; }
+.gt-cd-tr {
+    display: grid; align-items: center; gap: 12px; padding: 14px 8px; border-bottom: 1px solid var(--border);
+    grid-template-columns: 56px minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr) 80px 120px; font-size: 14px;
+}
+.gt-cd-tr:last-child { border-bottom: none; }
+.gt-cd-th { padding-top: 6px; padding-bottom: 10px; font-size: 12px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border-strong); }
+.gt-cd-tr:not(.gt-cd-th):hover { background: #f8fafc; }
+.gt-cd-tr .c-n { font-weight: 700; color: var(--text-dim); }
+.gt-cd-tr .c-d { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.gt-cd-tr .c-d code { font-family: var(--font-mono); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gt-cd-tr .c-w { color: var(--text-muted); }
+.gt-cd-tr .c-a { font-weight: 800; color: var(--primary-ink); }
+.gt-cd-tr .c-s { color: var(--text-muted); }
+.gt-cd-more { display: flex; justify-content: center; margin-top: 14px; }
+.gt-cd-note { margin: 14px 0 0; font-size: 12.5px; color: var(--text-dim); }
+@media (max-width: 720px) {
+    .gt-cd-th { display: none; }
+    .gt-cd-tr { grid-template-columns: 28px minmax(0, 1fr) auto; grid-template-areas: "n d a" ". w t"; row-gap: 4px; }
+    .gt-cd-tr .c-n { grid-area: n; } .gt-cd-tr .c-d { grid-area: d; } .gt-cd-tr .c-a { grid-area: a; }
+    .gt-cd-tr .c-w { grid-area: w; font-size: 13px; } .gt-cd-tr .c-t { grid-area: t; font-size: 13px; justify-self: end; }
+    .gt-cd-tr .c-s { display: none; }
+}
+
+/* full-page states + loading */
+.gt-cd-state { max-width: 520px; margin: 72px auto; padding: 40px 28px; text-align: center; background: #ffffff; border: 1px dashed var(--border-strong); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.gt-cd-state h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.gt-cd-state p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-muted); }
+.gt-cd-state .gt-btn { margin-top: 10px; }
+.gt-cd-sk { border-radius: 12px; }
+`;
+
+/* ───────── small helpers ───────── */
+
+const Svg = ({ children, size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {children}
+    </svg>
+);
+const IBack  = () => <Svg><path d="M19 12H5M12 19l-7-7 7-7" /></Svg>;
+const ICheck = ({ size }) => <Svg size={size}><path d="M5 13l4 4L19 7" /></Svg>;
+const IInfo  = () => <Svg><circle cx="12" cy="12" r="10" /><path d="M12 16v-4M12 8h.01" /></Svg>;
+const IAlert = () => <Svg><path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /></Svg>;
+const IHeart = () => <Svg size={30}><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" /></Svg>;
+
+const useNow = (ms = 60000) => {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), ms);
+        return () => clearInterval(id);
+    }, [ms]);
+    return now;
+};
+
+function imageSources(hash) {
+    if (!hash || hash === DEFAULT_IPFS_HASH) return [];
+    const path = String(hash).replace(/^ipfs:\/\//, "").replace(/^\/?ipfs\//, "");
+    let primary = null;
+    try { primary = getIPFSUrl(hash); } catch { /* use gateways */ }
+    return [...new Set([primary, ...FALLBACK_GATEWAYS.map((g) => g + path)].filter(Boolean))];
+}
+
+function Cover({ hash }) {
+    const sources = useMemo(() => imageSources(hash), [hash]);
+    const [idx, setIdx] = useState(0);
+    const [loaded, setLoaded] = useState(false);
+    if (sources.length === 0 || idx >= sources.length) {
+        return <div className="gt-cd-cover-ph"><span><IHeart /></span></div>;
+    }
+    return (
+        <>
+            {!loaded && <div className="gt-cd-cover-skel gt-skeleton" />}
+            <img
+                key={sources[idx]} src={sources[idx]} alt="" className={loaded ? "is-loaded" : ""}
+                onLoad={() => setLoaded(true)} onError={() => { setLoaded(false); setIdx((i) => i + 1); }}
+            />
+        </>
+    );
+}
+
+// Event log queries. Some RPCs refuse very wide block ranges, so fall back to recent windows.
+async function queryAll(contract, filter, provider) {
+    try {
+        return { events: await contract.queryFilter(filter, 0, "latest"), partial: false };
+    } catch {
+        const latest = await provider.getBlockNumber();
+        const WINDOW = 50000;
+        const jobs = Array.from({ length: 10 }, (_, i) => {
+            const to = latest - i * WINDOW;
+            if (to < 0) return Promise.resolve([]);
+            return contract.queryFilter(filter, Math.max(0, to - WINDOW + 1), to);
+        });
+        return { events: (await Promise.all(jobs)).flat(), partial: true };
+    }
+}
+
+const lower = (a) => (a ? a.toLowerCase() : "");
+
+/**
+ * All chain reads live here.
+ *  - `core`     : state read straight from the contract (fast, always available)
+ *  - `activity` : events (donation list, votes, refunds); loaded after the page is already visible
+ */
+function useCampaignData(address) {
+    const { account, provider, chainId } = useWallet();
+    const { getCampaignContractReadOnly } = useContract();
+    const [core, setCore] = useState({ status: "loading", data: null, key: "" });
+    const [activity, setActivity] = useState({ status: "loading", donations: [], votes: {}, refunds: {}, partial: false, key: "" });
+    const [reloadKey, setReloadKey] = useState(0);
+
+    useEffect(() => {
+        let cancelled = false;
+        const key = `${chainId}:${address}:${lower(account)}`;
+
+        (async () => {
+            if (!provider) { setCore({ status: "nowallet", data: null, key }); return; }
+            if (!ethers.isAddress(address)) { setCore({ status: "notfound", data: null, key }); return; }
+
+            // keep the old data on screen while refreshing the same campaign
+            setCore((s) => (s.key === key ? s : { status: "loading", data: null, key }));
+            setActivity((a) => (a.key === key ? a : { status: "loading", donations: [], votes: {}, refunds: {}, partial: false, key }));
+
+            try {
+                const code = await provider.getCode(address);
+                if (cancelled) return;
+                if (code === "0x") { setCore({ status: "notfound", data: null, key }); return; }
+
+                const c = getCampaignContractReadOnly(address);
+                const [title, description, ipfsHash, goal, raised, deadline, campaigner,
+                    donorCount, boardMembers, totalRequests, balance, mine] = await Promise.all([
+                    c.title(), c.description(), c.ipfsHash(), c.goalAmount(), c.totalDonated(), c.deadline(),
+                    c.campaigner(), c.getDonorCount(), c.getBoardMembers(), c.getTotalRequests(), c.getContractBalance(),
+                    account ? c.donations(account) : Promise.resolve(0n),
+                ]);
+                const total = Number(totalRequests);
+                const reqs = await Promise.all(Array.from({ length: total }, (_, i) => c.requests(i)));
+                if (cancelled) return;
+
+                const data = {
+                    address, title, description, ipfsHash, goal, raised, balance, mine, campaigner,
+                    deadline: Number(deadline),
+                    donorCount: Number(donorCount),
+                    boardMembers: [...boardMembers],
+                    requests: reqs.map((r, id) => ({
+                        id, description: r.description, amount: r.amount,
+                        approvals: Number(r.approvalCount), rejections: Number(r.rejectionCount),
+                        status: Number(r.status), executed: r.executed,
+                    })),
+                };
+                setCore({ status: "ready", data, key });
+
+                // ── events (donation list with times, who voted, refunds) ──
+                try {
+                    const [don, vot, ref] = await Promise.all([
+                        queryAll(c, c.filters.DonationReceived(), provider),
+                        queryAll(c, c.filters.RequestVoted(), provider),
+                        queryAll(c, c.filters.RefundClaimed(), provider),
+                    ]);
+
+                    const donations = don.events
+                        .filter((e) => e.args)
+                        .sort((a, b) => b.blockNumber - a.blockNumber || b.index - a.index)
+                        .slice(0, MAX_ROWS)
+                        .map((e) => ({
+                            key: `${e.transactionHash}:${e.index}`, donor: e.args.donor, amount: e.args.amount,
+                            block: e.blockNumber, hash: e.transactionHash, ts: null,
+                        }));
+
+                    // block timestamps for the rows we show
+                    const blocks = [...new Set(donations.map((d) => d.block))];
+                    const stamps = {};
+                    await Promise.all(blocks.map(async (b) => {
+                        try { stamps[b] = (await provider.getBlock(b))?.timestamp ?? null; } catch { stamps[b] = null; }
+                    }));
+                    donations.forEach((d) => { d.ts = stamps[d.block] ?? null; });
+
+                    const votes = {};
+                    vot.events.filter((e) => e.args).forEach((e) => {
+                        const id = Number(e.args.requestId);
+                        (votes[id] ||= []).push({ member: e.args.boardMember, approved: e.args.approved });
+                    });
+
+                    const refunds = {};
+                    ref.events.filter((e) => e.args).forEach((e) => {
+                        refunds[lower(e.args.donor)] = { amount: e.args.amount, hash: e.transactionHash };
+                    });
+
+                    if (!cancelled) {
+                        setActivity({ status: "ready", donations, votes, refunds, partial: don.partial || vot.partial || ref.partial, key });
+                    }
+                } catch (err) {
+                    console.error("Could not read campaign events", err);
+                    // fall back to contract state: donor addresses and cumulative amounts, no times
+                    let donations = [];
+                    try {
+                        const n = Math.min(Number(donorCount), 20);
+                        const addrs = await Promise.all(Array.from({ length: n }, (_, i) => c.donorList(i)));
+                        const amts = await Promise.all(addrs.map((a) => c.donations(a)));
+                        donations = addrs.map((a, i) => ({ key: a, donor: a, amount: amts[i], ts: null, hash: null })).reverse();
+                    } catch { /* leave empty */ }
+                    if (!cancelled) setActivity({ status: "unavailable", donations, votes: {}, refunds: {}, partial: false, key });
+                }
+            } catch (err) {
+                console.error("Could not load campaign", err);
+                if (!cancelled) setCore({ status: "error", data: null, key });
+            }
+        })();
+
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [address, chainId, provider, account, reloadKey]);
+
+    return { core, activity, reload: () => setReloadKey((k) => k + 1) };
+}
+
+const requestBadge = (r) => {
+    if (r.executed) return { label: "Paid out", cls: "gt-badge gt-badge-success" };
+    if (r.status === 2) return { label: "Rejected", cls: "gt-badge gt-badge-danger" };
+    if (r.status === 1) return { label: "Approved", cls: "gt-badge gt-badge-success" };
+    return { label: "Voting", cls: "gt-badge gt-badge-warning" };
+};
+
+/* ───────── page ───────── */
 
 const CampaignDetail = () => {
     const { address } = useParams();
-    const navigate    = useNavigate();
-    const { account, symbol, explorer, chainId } = useWallet();
-    const { getCampaignContract, getCampaignContractReadOnly } = useContract();
+    const navigate = useNavigate();
+    const toast = useToast();
+    const { account, network, symbol, connectWallet, loading: walletLoading } = useWallet();
+    const { getCampaignContract } = useContract();
+    const { core, activity, reload } = useCampaignData(address);
+    const now = useNow();
 
-    const [campaign, setCampaign]     = useState(null);
-    const [loading, setLoading]       = useState(true);
-    const [donating, setDonating]     = useState(false);
-    const [error, setError]           = useState(null);
-    const [success, setSuccess]       = useState(null);
-    const [donationAmt, setDonationAmt] = useState("");
-    const [donors, setDonors]         = useState([]);
-    const [refunding, setRefunding] = useState(false);
+    const [amount, setAmount] = useState("");
+    const [amountError, setAmountError] = useState("");
+    const [donating, setDonating] = useState(false);
+    const [lastDonation, setLastDonation] = useState(null); // { amount, hash }
+    const [claiming, setClaiming] = useState(false);
+    const [claimed, setClaimed] = useState(null);           // { amount, hash } right after claiming
+    const [shown, setShown] = useState(PAGE);
 
-    // ─────────────────────────────────────────
-    //  FETCH CAMPAIGN DETAILS
-    // ─────────────────────────────────────────
+    const data = core.data;
 
-    useEffect(() => {
-        if (address) fetchCampaign();
-    }, [address, chainId]);
-
-    const fetchCampaign = async () => {
-        try {
-            setLoading(true);
-            setError(null);
-
-            const contract = getCampaignContractReadOnly(address);
-            if (!contract) { setError("Contract not loaded"); return; }
-
-            const [
-                title,
-                description,
-                goalAmount,
-                totalDonated,
-                deadline,
-                status,
-                campaigner,
-                donorCount,
-                boardMembers,
-                totalRequests,
-            ] = await Promise.all([
-                contract.title(),
-                contract.description(),
-                contract.goalAmount(),
-                contract.totalDonated(),
-                contract.deadline(),
-                contract.status(),
-                contract.campaigner(),
-                contract.getDonorCount(),
-                contract.getBoardMembers(),
-                contract.getTotalRequests(),
-            ]);
-
-            // fetch donor list
-            const donorList = [];
-            const count = Number(donorCount);
-            for (let i = 0; i < Math.min(count, 10); i++) {
-                const donorAddr = await contract.donorList(i);
-                const amount    = await contract.donations(donorAddr);
-                donorList.push({
-                    address: donorAddr,
-                    amount: ethers.formatEther(amount),
-                });
-            }
-
-            setCampaign({
-                address,
-                title,
-                description,
-                goalAmount:    ethers.formatEther(goalAmount),
-                totalDonated:  ethers.formatEther(totalDonated),
-                deadline:      new Date(Number(deadline) * 1000),
-                status:        Number(status),
-                campaigner,
-                donorCount:    Number(donorCount),
-                boardMembers,
-                totalRequests: Number(totalRequests),
-            });
-
-            setDonors(donorList);
-
-        } catch (err) {
-            console.error(err);
-            setError("Failed to load campaign details");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // ─────────────────────────────────────────
-    //  DONATE
-    // ─────────────────────────────────────────
+    /* ── actions ── */
 
     const handleDonate = async () => {
-        if (!account) { setError("Please connect your wallet"); return; }
-        if (!donationAmt || parseFloat(donationAmt) < 0.01) {
-            setError("Minimum donation is 0.01 ${symbol}");
+        if (!account) { toast.info("Connect your wallet to donate."); connectWallet(); return; }
+        const v = amount.trim();
+        let wei;
+        try {
+            if (!/^\d*\.?\d+$/.test(v)) throw new Error("bad");
+            wei = ethers.parseEther(v);
+        } catch {
+            setAmountError("Enter a valid amount.");
             return;
         }
+        if (wei < MIN_DONATION_WEI) { setAmountError(`The minimum donation is 0.01 ${symbol}.`); return; }
 
+        setDonating(true);
         try {
-            setDonating(true);
-            setError(null);
-            setSuccess(null);
-
             const contract = getCampaignContract(address);
-            if (!contract) { setError("Contract not loaded"); return; }
-
-            const tx = await contract.donate({
-                value: ethers.parseEther(donationAmt),
+            if (!contract) { toast.error("Your wallet isn't ready. Reconnect it and try again."); return; }
+            const receipt = await toast.track(() => contract.donate({ value: wei }), {
+                pending: "Confirm the donation in your wallet...", success: "Donation received",
             });
-
-            setSuccess("Transaction submitted! Waiting for confirmation...");
-            await tx.wait();
-            setSuccess(`✅ Donation of ${donationAmt} ${symbol} confirmed!`);
-            setDonationAmt("");
-
-            // refresh campaign data
-            await fetchCampaign();
-
-        } catch (err) {
-            console.error(err);
-            if (err.code === 4001) {
-                setError("Transaction rejected.");
-            } else {
-                setError(err.message || "Donation failed");
-            }
+            if (receipt) { setLastDonation({ amount: v, hash: receipt.hash }); setAmount(""); reload(); }
         } finally {
             setDonating(false);
         }
     };
 
-    const handleClaimRefund = async () => {
-    if (!account) { setError("Please connect your wallet"); return; }
-    try {
-        setRefunding(true);
-        setError(null);
-        setSuccess(null);
-
-        const contract = getCampaignContract(address);
-        const tx = await contract.claimRefund();
-        setSuccess("Refund submitted! Waiting for confirmation...");
-        await tx.wait();
-        setSuccess("✅ Refund claimed successfully!");
-        await fetchCampaign();
-
-    } catch (err) {
-        if (err.code === 4001) setError("Transaction rejected.");
-        else if (err.message?.includes("No donation to refund")) setError("You have no donation to refund.");
-        else if (err.message?.includes("Goal was met")) setError("Goal was met — no refunds available.");
-        else if (err.message?.includes("deadline not reached")) setError("Campaign deadline not reached yet.");
-        else setError(err.message || "Refund failed");
-    } finally {
-        setRefunding(false);
-    }
-};
-
-    // ─────────────────────────────────────────
-    //  HELPERS
-    // ─────────────────────────────────────────
-
-    const getStatusInfo = (status) => {
-        switch (status) {
-            case 0: return { label: "Active",  color: "#22c55e", bg: "#052e16" };
-            case 1: return { label: "Expired", color: "#f59e0b", bg: "#451a03" };
-            case 2: return { label: "Closed",  color: "#ef4444", bg: "#450a0a" };
-            default: return { label: "Unknown", color: "#94a3b8", bg: "#1e293b" };
+    const handleClaim = async () => {
+        if (!account) { toast.info("Connect your wallet to claim a refund."); connectWallet(); return; }
+        setClaiming(true);
+        try {
+            const contract = getCampaignContract(address);
+            if (!contract) { toast.error("Your wallet isn't ready. Reconnect it and try again."); return; }
+            const owed = data.mine;
+            const receipt = await toast.track(() => contract.claimRefund(), {
+                pending: "Confirm the refund in your wallet...", success: "Refund claimed",
+            });
+            if (receipt) { setClaimed({ amount: owed, hash: receipt.hash }); reload(); }
+        } finally {
+            setClaiming(false);
         }
     };
 
-    const getProgress = (donated, goal) => {
-        const pct = (parseFloat(donated) / parseFloat(goal)) * 100;
-        return Math.min(pct, 100).toFixed(1);
-    };
+    /* ── full-page states ── */
 
-    const getTimeLeft = (deadline) => {
-        const diff = deadline - new Date();
-        if (diff <= 0) return "Expired";
-        const days  = Math.floor(diff / (1000 * 60 * 60 * 24));
-        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-        return days > 0 ? `${days}d ${hours}h left` : `${hours}h left`;
-    };
-
-    // ─────────────────────────────────────────
-    //  LOADING / ERROR
-    // ─────────────────────────────────────────
-
-    if (loading) return (
-        <div style={styles.centered}>
-            <p style={styles.loadingText}>⏳ Loading campaign from blockchain...</p>
-        </div>
-    );
-
-    if (error && !campaign) return (
-        <div style={styles.centered}>
-            <p style={styles.errorText}>⚠️ {error}</p>
-            <button style={styles.backBtn} onClick={() => navigate("/donate")}>
-                ← Back to Campaigns
-            </button>
-        </div>
-    );
-
-    if (!campaign) return null;
-
-    const statusInfo = getStatusInfo(campaign.status);
-    const progress   = getProgress(campaign.totalDonated, campaign.goalAmount);
-    const timeLeft   = getTimeLeft(campaign.deadline);
-    const isActive   = campaign.status === 0;
-
-    // ─────────────────────────────────────────
-    //  RENDER
-    // ─────────────────────────────────────────
-
-    return (
-        <div style={styles.container}>
-
-            {/* Back button */}
-            <button style={styles.backBtn} onClick={() => navigate("/donate")}>
-                ← Back to Campaigns
-            </button>
-
-            <div style={styles.layout}>
-
-                {/* ── LEFT COLUMN ── */}
-                <div style={styles.leftCol}>
-
-                    {/* Header */}
-                    <div style={styles.card}>
-                        <div style={{
-                            ...styles.badge,
-                            color: statusInfo.color,
-                            background: statusInfo.bg,
-                            border: `1px solid ${statusInfo.color}`,
-                        }}>
-                            {statusInfo.label}
-                        </div>
-
-                        <h1 style={styles.title}>{campaign.title}</h1>
-                        <p style={styles.description}>{campaign.description}</p>
-
-                        {/* Progress */}
-                        <div style={styles.progressSection}>
-                            <div style={styles.progressBar}>
-                                <div style={{
-                                    ...styles.progressFill,
-                                    width: `${progress}%`,
-                                    background: progress >= 100 ? "#22c55e" : "#3b82f6",
-                                }} />
-                            </div>
-                            <div style={styles.progressStats}>
-                                <div style={styles.progressStat}>
-                                    <span style={styles.bigNum}>{campaign.totalDonated} {symbol}</span>
-                                    <span style={styles.smallLabel}>raised</span>
-                                </div>
-                                <div style={styles.progressStat}>
-                                    <span style={styles.bigNum}>{progress}%</span>
-                                    <span style={styles.smallLabel}>funded</span>
-                                </div>
-                                <div style={styles.progressStat}>
-                                    <span style={styles.bigNum}>{campaign.goalAmount} {symbol}</span>
-                                    <span style={styles.smallLabel}>goal</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Meta */}
-                        <div style={styles.metaGrid}>
-                            <div style={styles.metaItem}>
-                                <span style={styles.metaIcon}>👥</span>
-                                <div>
-                                    <div style={styles.metaValue}>{campaign.donorCount}</div>
-                                    <div style={styles.metaLabel}>Donors</div>
-                                </div>
-                            </div>
-                            <div style={styles.metaItem}>
-                                <span style={styles.metaIcon}>⏰</span>
-                                <div>
-                                    <div style={styles.metaValue}>{timeLeft}</div>
-                                    <div style={styles.metaLabel}>Deadline</div>
-                                </div>
-                            </div>
-                            <div style={styles.metaItem}>
-                                <span style={styles.metaIcon}>📋</span>
-                                <div>
-                                    <div style={styles.metaValue}>{campaign.totalRequests}</div>
-                                    <div style={styles.metaLabel}>Requests</div>
-                                </div>
-                            </div>
-                            <div style={styles.metaItem}>
-                                <span style={styles.metaIcon}>🏛️</span>
-                                <div>
-                                    <div style={styles.metaValue}>{campaign.boardMembers.length}</div>
-                                    <div style={styles.metaLabel}>Board Members</div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Campaigner info */}
-                    <div style={styles.card}>
-                        <h3 style={styles.sectionTitle}>👤 Campaigner</h3>
-                        <div style={styles.addressBox}>
-                            <span style={styles.addressText}>{campaign.campaigner}</span>
-                            <a
-                                href={`${explorer}/address/${campaign.campaigner}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={styles.etherscanLink}
-                            >
-                                View on Explorer ↗
-                            </a>
-                        </div>
-                    </div>
-
-                    {/* Board Members */}
-                    <div style={styles.card}>
-                        <h3 style={styles.sectionTitle}>🏛️ Board Members</h3>
-                        <p style={styles.boardNote}>
-                            These addresses must approve withdrawal requests (2/3 supermajority)
-                        </p>
-                        {campaign.boardMembers.map((member, i) => (
-                            <div key={i} style={styles.memberRow}>
-                                <span style={styles.memberNum}>{i + 1}</span>
-                                <span style={styles.memberAddr}>
-                                    {member.slice(0, 10)}...{member.slice(-8)}
-                                </span>
-                                <a
-                                    href={`${explorer}/address/${member}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={styles.miniLink}
-                                >
-                                    ↗
-                                </a>
-                            </div>
-                        ))}
-                    </div>
-
-                </div>
-
-                {/* ── RIGHT COLUMN ── */}
-                <div style={styles.rightCol}>
-
-                    {/* Donate Card */}
-                    <div style={styles.donateCard}>
-                        <h3 style={styles.donateTitle}>💚 Make a Donation</h3>
-
-                        {!isActive && (
-                            <div style={styles.expiredNote}>
-                                ⚠️ This campaign is no longer accepting donations
-                            </div>
-                        )}
-
-                        {error && <div style={styles.errorBox}>⚠️ {error}</div>}
-                        {success && <div style={styles.successBox}>{success}</div>}
-
-                        <div style={styles.inputGroup}>
-                            <label style={styles.inputLabel}>Amount ({symbol})</label>
-                            <div style={styles.inputWrapper}>
-                                <input
-                                    style={{
-                                        ...styles.amtInput,
-                                        opacity: !isActive ? 0.5 : 1,
-                                    }}
-                                    type="number"
-                                    placeholder="0.01"
-                                    min="0.01"
-                                    step="0.01"
-                                    value={donationAmt}
-                                    onChange={(e) => setDonationAmt(e.target.value)}
-                                    disabled={!isActive}
-                                />
-                                <span style={styles.ethLabel}>{symbol}</span>
-                            </div>
-                            <p style={styles.minNote}>Minimum: 0.01 {symbol}</p>
-                        </div>
-
-                        {/* Quick amounts */}
-                        <div style={styles.quickAmts}>
-                            {["0.01", "0.05", "0.1", "0.5"].map(amt => (
-                                <button
-                                    key={amt}
-                                    style={styles.quickBtn}
-                                    onClick={() => setDonationAmt(amt)}
-                                    disabled={!isActive}
-                                >
-                                    {amt} {symbol}
-                                </button>
-                            ))}
-                        </div>
-
-                        <button
-                            style={{
-                                ...styles.donateBtn,
-                                opacity: (!isActive || donating) ? 0.6 : 1,
-                                cursor: (!isActive || donating) ? "not-allowed" : "pointer",
-                            }}
-                            onClick={handleDonate}
-                            disabled={!isActive || donating}
-                        >
-                            {donating ? "⏳ Processing..." : "💚 Donate Now"}
-                        </button>
-
-                        <p style={styles.secureNote}>
-                            🔒 Funds go directly to the smart contract.
-                            Withdrawals require board approval.
-                        </p>
-                    </div>  
-
-                     {/* Refund Card — shows only when campaign expired and goal not met */}
-                    {(campaign.status === 1 || new Date() > campaign.deadline) && 
-                        parseFloat(campaign.totalDonated) < parseFloat(campaign.goalAmount) && (
-                        <div style={styles.refundCard}>
-                            <h3 style={styles.refundTitle}>💸 Claim Refund</h3>
-                            <p style={styles.refundDesc}>
-                                This campaign expired without reaching its goal.
-                                If you donated, you can claim your {symbol} back.
-                            </p>
-                            {error && <div style={styles.errorBox}>⚠️ {error}</div>}
-                            {success && <div style={styles.successBox}>{success}</div>}
-                            <button
-                                style={{
-                                    ...styles.refundBtn,
-                                    opacity: refunding ? 0.6 : 1,
-                                    cursor: refunding ? "not-allowed" : "pointer",
-                                }}
-                                onClick={handleClaimRefund}
-                                disabled={refunding}
-                            >
-                                {refunding ? "⏳ Processing..." : "💸 Claim My Refund"}
-                            </button>
-                        </div>
-                    )}    
-
-                    {/* Contract info */}
-                    <div style={styles.card}>
-                        <h3 style={styles.sectionTitle}>📄 Contract</h3>
-                        <div style={styles.addressBox}>
-                            <span style={styles.addressText}>
-                                {address.slice(0, 10)}...{address.slice(-8)}
-                            </span>
-                            <a
-                                href={`${explorer}/address/${address}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                style={styles.etherscanLink}
-                            >
-                                View on Explorer ↗
-                            </a>
-                        </div>
-                    </div>
-
-                    {/* Board Member Access */}
-                    {campaign.boardMembers.some(
-                        m => m.toLowerCase() === account?.toLowerCase()
-                            ) && (
-                            <div style={styles.boardAccessCard}>
-                                 <h3 style={styles.boardAccessTitle}>🏛️ You're a Board Member!</h3>
-                                 <p style={styles.boardAccessDesc}>
-                                 You have voting rights on withdrawal requests for this campaign.
-                                </p>
-                                 <button
-                                 style={styles.boardAccessBtn}
-                                    onClick={() => navigate(`/board/${address}`)}
-                                 >
-                                     Go to Board Dashboard →
-                        </button>
-                    </div>
-)}
-
-                    {/* Donors list */}
-                    {donors.length > 0 && (
-                        <div style={styles.card}>
-                            <h3 style={styles.sectionTitle}>💚 Recent Donors</h3>
-                            {donors.map((donor, i) => (
-                                <div key={i} style={styles.donorRow}>
-                                    <span style={styles.donorAddr}>
-                                        {donor.address.slice(0, 8)}...{donor.address.slice(-6)}
-                                    </span>
-                                    <span style={styles.donorAmt}>
-                                        {donor.amount} {symbol}
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                </div>
+    const stateCard = (title, text, action) => (
+        <div className="gt-cd">
+            <style>{css}</style>
+            <div className="gt-cd-state">
+                <h2>{title}</h2>
+                <p>{text}</p>
+                {action}
             </div>
         </div>
     );
-};
 
-const styles = {
-    container: {
-        minHeight: "100vh",
-        background: "#0f172a",
-        padding: "30px 20px",
-        fontFamily: "sans-serif",
-        maxWidth: "1200px",
-        margin: "0 auto",
-    },
-    centered: {
-        minHeight: "80vh",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        gap: "16px",
-        background: "#0f172a",
-        fontFamily: "sans-serif",
-    },
-    backBtn: {
-        background: "transparent",
-        color: "#94a3b8",
-        border: "1px solid #334155",
-        padding: "8px 16px",
-        borderRadius: "8px",
-        cursor: "pointer",
-        fontSize: "14px",
-        marginBottom: "24px",
-    },
-    layout: {
-        display: "flex",
-        gap: "24px",
-        alignItems: "flex-start",
-        flexWrap: "wrap",
-    },
-    leftCol: {
-        flex: 2,
-        minWidth: "320px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "20px",
-    },
-    rightCol: {
-        flex: 1,
-        minWidth: "280px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "20px",
-        position: "sticky",
-        top: "100px",
-    },
-    card: {
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "16px",
-        padding: "24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-    },
-    donateCard: {
-        background: "#1e293b",
-        border: "2px solid #22c55e",
-        borderRadius: "16px",
-        padding: "24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-    },
-    badge: {
-        display: "inline-block",
-        padding: "4px 12px",
-        borderRadius: "20px",
-        fontSize: "12px",
-        fontWeight: "700",
-        width: "fit-content",
-    },
-    title: {
-        fontSize: "28px",
-        fontWeight: "800",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    description: {
-        color: "#94a3b8",
-        lineHeight: 1.7,
-        fontSize: "15px",
-        margin: 0,
-    },
-    progressSection: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "12px",
-    },
-    progressBar: {
-        background: "#0f172a",
-        borderRadius: "100px",
-        height: "10px",
-        overflow: "hidden",
-    },
-    progressFill: {
-        height: "100%",
-        borderRadius: "100px",
-        transition: "width 0.5s ease",
-    },
-    progressStats: {
-        display: "flex",
-        justifyContent: "space-between",
-    },
-    progressStat: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: "2px",
-    },
-    bigNum: {
-        fontSize: "18px",
-        fontWeight: "700",
-        color: "#22c55e",
-    },
-    smallLabel: {
-        fontSize: "12px",
-        color: "#64748b",
-    },
-    metaGrid: {
-        display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        gap: "16px",
-    },
-    metaItem: {
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        background: "#0f172a",
-        padding: "12px",
-        borderRadius: "10px",
-    },
-    metaIcon: {
-        fontSize: "24px",
-    },
-    metaValue: {
-        fontSize: "16px",
-        fontWeight: "700",
-        color: "#f1f5f9",
-    },
-    metaLabel: {
-        fontSize: "12px",
-        color: "#64748b",
-    },
-    sectionTitle: {
-        fontSize: "16px",
-        fontWeight: "700",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    boardNote: {
-        fontSize: "13px",
-        color: "#64748b",
-        margin: 0,
-    },
-    memberRow: {
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        padding: "8px 0",
-        borderBottom: "1px solid #1e293b",
-    },
-    memberNum: {
-        color: "#64748b",
-        fontSize: "13px",
-        width: "20px",
-    },
-    memberAddr: {
-        color: "#94a3b8",
-        fontFamily: "monospace",
-        fontSize: "13px",
-        flex: 1,
-    },
-    miniLink: {
-        color: "#3b82f6",
-        fontSize: "13px",
-        textDecoration: "none",
-    },
-    addressBox: {
-        background: "#0f172a",
-        borderRadius: "8px",
-        padding: "12px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-    },
-    addressText: {
-        color: "#94a3b8",
-        fontFamily: "monospace",
-        fontSize: "13px",
-        wordBreak: "break-all",
-    },
-    etherscanLink: {
-        color: "#3b82f6",
-        fontSize: "13px",
-        textDecoration: "none",
-    },
-    donateTitle: {
-        fontSize: "20px",
-        fontWeight: "700",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    expiredNote: {
-        background: "#451a03",
-        border: "1px solid #f59e0b",
-        color: "#fcd34d",
-        padding: "10px 14px",
-        borderRadius: "8px",
-        fontSize: "13px",
-    },
-    errorBox: {
-        background: "#450a0a",
-        border: "1px solid #ef4444",
-        color: "#fca5a5",
-        padding: "10px 14px",
-        borderRadius: "8px",
-        fontSize: "13px",
-    },
-    successBox: {
-        background: "#052e16",
-        border: "1px solid #22c55e",
-        color: "#86efac",
-        padding: "10px 14px",
-        borderRadius: "8px",
-        fontSize: "13px",
-    },
-    inputGroup: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-    },
-    inputLabel: {
-        color: "#94a3b8",
-        fontSize: "14px",
-        fontWeight: "600",
-    },
-    inputWrapper: {
-        position: "relative",
-        display: "flex",
-        alignItems: "center",
-    },
-    amtInput: {
-        background: "#0f172a",
-        border: "1px solid #334155",
-        borderRadius: "8px",
-        padding: "12px 50px 12px 16px",
-        color: "#f1f5f9",
-        fontSize: "18px",
-        fontWeight: "700",
-        outline: "none",
-        width: "100%",
-    },
-    ethLabel: {
-        position: "absolute",
-        right: "16px",
-        color: "#64748b",
-        fontSize: "14px",
-        fontWeight: "600",
-    },
-    minNote: {
-        color: "#64748b",
-        fontSize: "12px",
-        margin: 0,
-    },
-    quickAmts: {
-        display: "flex",
-        gap: "8px",
-        flexWrap: "wrap",
-    },
-    quickBtn: {
-        background: "#0f172a",
-        color: "#94a3b8",
-        border: "1px solid #334155",
-        padding: "8px 12px",
-        borderRadius: "8px",
-        cursor: "pointer",
-        fontSize: "13px",
-        fontWeight: "600",
-    },
-    donateBtn: {
-        background: "#22c55e",
-        color: "#000",
-        border: "none",
-        padding: "14px",
-        borderRadius: "10px",
-        fontWeight: "bold",
-        fontSize: "16px",
-    },
-    secureNote: {
-        color: "#64748b",
-        fontSize: "12px",
-        textAlign: "center",
-        margin: 0,
-        lineHeight: 1.5,
-    },
-    refundCard: {
-    background: "#1e293b",
-    border: "2px solid #f59e0b",
-    borderRadius: "16px",
-    padding: "24px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "16px",
-},
-refundTitle: {
-    fontSize: "18px",
-    fontWeight: "700",
-    color: "#fcd34d",
-    margin: 0,
-},
-refundDesc: {
-    color: "#94a3b8",
-    fontSize: "13px",
-    margin: 0,
-    lineHeight: 1.5,
-},
-refundBtn: {
-    background: "#f59e0b",
-    color: "#000",
-    border: "none",
-    padding: "14px",
-    borderRadius: "10px",
-    fontWeight: "bold",
-    fontSize: "15px",
-},
-    donorRow: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        padding: "8px 0",
-        borderBottom: "1px solid #0f172a",
-    },
-    donorAddr: {
-        color: "#94a3b8",
-        fontFamily: "monospace",
-        fontSize: "13px",
-    },
-    donorAmt: {
-        color: "#22c55e",
-        fontWeight: "700",
-        fontSize: "13px",
-    },
-    loadingText: {
-        color: "#94a3b8",
-        fontSize: "16px",
-    },
-    errorText: {
-        color: "#ef4444",
-        fontSize: "16px",
-    },
-    boardAccessCard: {
-    background: "#052e16",
-    border: "2px solid #22c55e",
-    borderRadius: "16px",
-    padding: "20px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-},
-boardAccessTitle: {
-    fontSize: "16px",
-    fontWeight: "700",
-    color: "#22c55e",
-    margin: 0,
-},
-boardAccessDesc: {
-    color: "#86efac",
-    fontSize: "13px",
-    margin: 0,
-    lineHeight: 1.5,
-},
-boardAccessBtn: {
-    background: "#22c55e",
-    color: "#000",
-    border: "none",
-    padding: "12px",
-    borderRadius: "8px",
-    fontWeight: "bold",
-    cursor: "pointer",
-    fontSize: "14px",
-},
+    if (core.status === "nowallet") {
+        return stateCard("Connect your wallet", "Connect a wallet to read this campaign from the blockchain.",
+            <button className="gt-btn gt-btn-primary" onClick={connectWallet} disabled={walletLoading}>
+                {walletLoading ? "Connecting..." : "Connect Wallet"}
+            </button>);
+    }
+    if (core.status === "notfound") {
+        return stateCard("Campaign not found",
+            `There is no campaign at this address on ${network?.name || "this network"}. If you were sent this link, it may be on a different network. Switch networks from the navbar.`,
+            <button className="gt-btn gt-btn-secondary" onClick={() => navigate("/donate")}>Back to campaigns</button>);
+    }
+    if (core.status === "error") {
+        return stateCard("Couldn't load this campaign", "Something went wrong while reading from the blockchain. Check your connection and try again.",
+            <button className="gt-btn gt-btn-primary" onClick={reload}>Try again</button>);
+    }
+    if (core.status === "loading" || !data) {
+        return (
+            <div className="gt-cd">
+                <style>{css}</style>
+                <div className="gt-cd-inner">
+                    <div className="gt-skeleton gt-cd-sk" style={{ height: 36, width: 160, marginBottom: 16 }} />
+                    <div className="gt-cd-layout">
+                        <div className="gt-cd-top">
+                            <div className="gt-skeleton gt-cd-sk" style={{ height: 520 }} />
+                        </div>
+                        <div className="gt-cd-side">
+                            <div className="gt-skeleton gt-cd-sk" style={{ height: 340 }} />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    /* ── derived state (from deadline + totals, never the contract's stale `status` field) ── */
+
+    const stateKey = campaignState(data, now);
+    const meta = STATE_META[stateKey];
+    const open = meta.open;
+    const pct = percentFunded(data.raised, data.goal);
+    const me = lower(account);
+    const isCampaigner = !!me && lower(data.campaigner) === me;
+    const isBoard = !!me && data.boardMembers.some((m) => lower(m) === me);
+    const needed = approvalsNeeded(data.boardMembers.length);
+    const deadlineText = formatDateTime(data.deadline);
+    const endedDate = new Date(data.deadline * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+    const myRefund = claimed || activity.refunds[me] || null;
+    const refundable = stateKey === "failed" && data.mine > 0n;
+    const alreadyClaimed = stateKey === "failed" && data.mine === 0n && !!myRefund;
+    const refundBlocked = refundable && data.balance < data.mine; // contract holds less than the donor is owed
+    const withdrawn = data.requests.filter((r) => r.executed).reduce((s, r) => s + r.amount, 0n);
+
+    const rows = activity.donations.slice(0, shown);
+    const totalRows = activity.donations.length;
+
+    /* ── sidebar card ── */
+
+    const donateCard = (
+        <div className="gt-cd-card gt-cd-action">
+            <h2>Make a donation</h2>
+
+            {lastDonation && (
+                <div className="gt-cd-notice">
+                    <ICheck size={18} />
+                    <div>
+                        <strong>Thank you. {lastDonation.amount} {symbol} received.</strong>
+                        <TxLink hash={lastDonation.hash} label="View transaction" />
+                    </div>
+                </div>
+            )}
+
+            {stateKey === "goal_reached" && (
+                <div className="gt-cd-notice is-info">
+                    <IInfo />
+                    <p>The goal has been reached. Donations stay open until the deadline.</p>
+                </div>
+            )}
+
+            {data.mine > 0n && (
+                <div className="gt-cd-kv"><span>You have donated</span><strong>{formatAmount(data.mine)} {symbol}</strong></div>
+            )}
+
+            <div>
+                <label className="gt-cd-label" htmlFor="amount">Amount</label>
+                <div className="gt-cd-affix" style={{ marginTop: 8 }}>
+                    <input
+                        id="amount" className={`gt-cd-input${amountError ? " is-error" : ""}`}
+                        inputMode="decimal" placeholder="0.01" value={amount}
+                        onChange={(e) => { setAmount(e.target.value); setAmountError(""); }}
+                        onKeyDown={(e) => e.key === "Enter" && !donating && handleDonate()}
+                        aria-invalid={!!amountError}
+                    />
+                    <span>{symbol}</span>
+                </div>
+                {amountError ? <p className="gt-cd-err" style={{ marginTop: 6 }}>{amountError}</p>
+                             : <p className="gt-cd-hint" style={{ marginTop: 6 }}>Minimum 0.01 {symbol}.</p>}
+            </div>
+
+            <div className="gt-cd-chips">
+                {QUICK_AMOUNTS.map((a) => (
+                    <button key={a} className="gt-cd-chip" onClick={() => { setAmount(a); setAmountError(""); }}>
+                        {a} {symbol}
+                    </button>
+                ))}
+            </div>
+
+            <button className="gt-btn gt-btn-primary" onClick={handleDonate} disabled={donating}>
+                {donating ? "Processing..." : account ? "Donate now" : "Connect wallet to donate"}
+            </button>
+
+            <p className="gt-cd-fine">
+                Funds go directly to the smart contract, never to a person. Withdrawals need {needed} of {data.boardMembers.length} board
+                approvals. If the goal isn't reached by {deadlineText}, you can claim a refund. Transactions are irreversible.
+            </p>
+        </div>
+    );
+
+    const fundedCard = (
+        <div className="gt-cd-card gt-cd-action is-neutral">
+            <h2>Campaign funded</h2>
+            <div className="gt-cd-notice">
+                <ICheck size={18} />
+                <p>This campaign reached its goal and ended on {endedDate}. Donations are closed. Funds leave the contract only when the board approves a withdrawal.</p>
+            </div>
+            {data.mine > 0n && (
+                <div className="gt-cd-kv"><span>You donated</span><strong>{formatAmount(data.mine)} {symbol}</strong></div>
+            )}
+        </div>
+    );
+
+    const failedCard = (
+        <div className={`gt-cd-card gt-cd-action ${refundable ? "is-warn" : "is-neutral"}`}>
+            <h2>{alreadyClaimed ? "Refund claimed" : "Campaign ended"}</h2>
+            <p className="gt-cd-muted">
+                This campaign ended on {endedDate} without reaching its goal of {formatAmount(data.goal)} {symbol}. Donors can claim their donation back.
+            </p>
+
+            {!account && (
+                <>
+                    <p className="gt-cd-hint">Connect your wallet to check whether you can claim a refund.</p>
+                    <button className="gt-btn gt-btn-secondary" onClick={connectWallet} disabled={walletLoading}>
+                        {walletLoading ? "Connecting..." : "Connect Wallet"}
+                    </button>
+                </>
+            )}
+
+            {account && refundable && (
+                <>
+                    <div className="gt-cd-kv"><span>Your refundable donation</span><strong>{formatAmount(data.mine)} {symbol}</strong></div>
+                    {withdrawn > 0n && (
+                        <div className="gt-cd-notice is-warn">
+                            <IAlert />
+                            <p>The board approved withdrawals of {formatAmount(withdrawn)} {symbol} from this campaign. The contract now holds {formatAmount(data.balance)} {symbol}.</p>
+                        </div>
+                    )}
+                    {refundBlocked ? (
+                        <div className="gt-cd-notice is-warn">
+                            <IAlert />
+                            <p>The contract holds less than you are owed, so this refund cannot be paid out in full right now.</p>
+                        </div>
+                    ) : (
+                        <button className="gt-btn gt-cd-warnbtn" onClick={handleClaim} disabled={claiming}>
+                            {claiming ? "Processing..." : "Claim my refund"}
+                        </button>
+                    )}
+                </>
+            )}
+
+            {account && alreadyClaimed && (
+                <div className="gt-cd-notice">
+                    <ICheck size={18} />
+                    <div>
+                        <strong>You already claimed your refund of {formatAmount(myRefund.amount)} {symbol}.</strong>
+                        <TxLink hash={myRefund.hash} label="View transaction" />
+                    </div>
+                </div>
+            )}
+
+            {account && !refundable && !alreadyClaimed && (
+                <p className="gt-cd-hint">You have no donation to refund on this campaign.</p>
+            )}
+        </div>
+    );
+
+    const sideAction = open ? donateCard : stateKey === "funded" ? fundedCard : failedCard;
+
+    /* ── render ── */
+
+    return (
+        <div className="gt-cd">
+            <style>{css}</style>
+            <div className="gt-cd-inner">
+                <button className="gt-cd-back" onClick={() => navigate("/donate")}>
+                    <IBack /> Back to campaigns
+                </button>
+
+                <div className="gt-cd-layout">
+                    {/* ───── top: hero ───── */}
+                    <div className="gt-cd-top">
+                        <section className="gt-cd-card gt-cd-hero">
+                            <div className="gt-cd-cover"><Cover hash={data.ipfsHash} /></div>
+                            <div className="gt-cd-hero-body">
+                                <div><span className={meta.badge}>{meta.label}</span></div>
+                                <h1 className="gt-cd-title">{data.title}</h1>
+                                <p className="gt-cd-by">
+                                    Started by <code title={data.campaigner}>{shortAddress(data.campaigner)}</code>
+                                    {isCampaigner && <> <span className="gt-cd-tag">You</span></>}
+                                </p>
+                                <p className="gt-cd-desc">{data.description}</p>
+
+                                <div>
+                                    <div className="gt-cd-raise">
+                                        <span className="gt-cd-raised">{formatAmount(data.raised)} {symbol}<small>raised of {formatAmount(data.goal)} {symbol}</small></span>
+                                        <span className="gt-cd-pct">{percentLabel(pct)} funded</span>
+                                    </div>
+                                    <div className="gt-cd-bar" style={{ marginTop: 10 }}>
+                                        <div className={`gt-cd-fill${pct >= 100 ? " is-full" : ""}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                                    </div>
+                                </div>
+
+                                <div className="gt-cd-tiles">
+                                    <div className="gt-cd-tile"><span>Donors</span><strong>{data.donorCount}</strong></div>
+                                    <div className="gt-cd-tile"><span>{open ? "Time left" : "Ended on"}</span><strong>{open ? timeLeft(data.deadline, now) : endedDate}</strong></div>
+                                    <div className="gt-cd-tile"><span>Held in contract</span><strong>{formatAmount(data.balance)} {symbol}</strong></div>
+                                    <div className="gt-cd-tile"><span>Withdrawal requests</span><strong>{data.requests.length}</strong></div>
+                                    <div className="gt-cd-tile"><span>Board members</span><strong>{data.boardMembers.length}</strong></div>
+                                    <div className="gt-cd-tile"><span>Approvals needed</span><strong>{needed} of {data.boardMembers.length}</strong></div>
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+
+                    {/* ───── side: action ───── */}
+                    <aside className="gt-cd-side">
+                        {sideAction}
+
+                        {isBoard && (
+                            <div className="gt-cd-card gt-cd-action is-neutral">
+                                <h2>You are on the board</h2>
+                                <p className="gt-cd-muted">You can vote on withdrawal requests for this campaign.</p>
+                                <button className="gt-btn gt-btn-secondary" onClick={() => navigate(`/board/${address}`)}>Open board dashboard</button>
+                            </div>
+                        )}
+                        {isCampaigner && (
+                            <div className="gt-cd-card gt-cd-action is-neutral">
+                                <h2>You started this campaign</h2>
+                                <p className="gt-cd-muted">Create withdrawal requests and track votes from your campaigns page.</p>
+                                <button className="gt-btn gt-btn-secondary" onClick={() => navigate("/dashboard")}>Manage campaign</button>
+                            </div>
+                        )}
+
+                        <div className="gt-cd-card">
+                            <h2>Contract</h2>
+                            <p className="gt-cd-hint" style={{ margin: "6px 0 10px" }}>Deployed on {network?.name || "this network"}. Anyone can verify every transaction.</p>
+                            <div className="gt-cd-addr">{address}</div>
+                            <div style={{ marginTop: 10 }}><TxLink type="address" hash={address} label="View on explorer" /></div>
+                        </div>
+                    </aside>
+
+                    {/* ───── rest: requests + people ───── */}
+                    <div className="gt-cd-rest">
+                        <section className="gt-cd-card">
+                            <div className="gt-cd-sechead">
+                                <h2>Withdrawal requests</h2>
+                                <span className="gt-cd-count">{data.requests.length}</span>
+                            </div>
+                            <p className="gt-cd-muted">
+                                The campaigner cannot move funds alone. A request passes with {needed} of {data.boardMembers.length} board approvals, and the same number of rejections blocks it.
+                            </p>
+
+                            {data.requests.length === 0 ? (
+                                <div className="gt-cd-empty">No withdrawal requests yet. All donated funds are still held by the contract.</div>
+                            ) : (
+                                <div className="gt-cd-reqs">
+                                    {data.requests.map((r) => {
+                                        const b = requestBadge(r);
+                                        const size = data.boardMembers.length;
+                                        const voters = activity.votes[r.id] || [];
+                                        return (
+                                            <div key={r.id} className="gt-cd-req">
+                                                <div className="gt-cd-req-head">
+                                                    <div>
+                                                        <span className="gt-cd-req-n">Request {r.id + 1}</span>
+                                                        <span className={b.cls}>{b.label}</span>
+                                                    </div>
+                                                    <span className="gt-cd-req-amt">{formatAmount(r.amount)} {symbol}</span>
+                                                </div>
+                                                <p className="gt-cd-req-desc">{r.description}</p>
+
+                                                <div className="gt-cd-vote">
+                                                    <div className="gt-cd-vote-row"><span>Approvals</span><span>{r.approvals} of {size}, needs {needed}</span></div>
+                                                    <div className="gt-cd-vbar"><i style={{ width: `${Math.min(100, (r.approvals / size) * 100)}%`, background: "#22c55e" }} /></div>
+                                                </div>
+                                                <div className="gt-cd-vote">
+                                                    <div className="gt-cd-vote-row"><span>Rejections</span><span>{r.rejections} of {size}, needs {needed}</span></div>
+                                                    <div className="gt-cd-vbar"><i style={{ width: `${Math.min(100, (r.rejections / size) * 100)}%`, background: "#ef4444" }} /></div>
+                                                </div>
+
+                                                {voters.length > 0 && (
+                                                    <div className="gt-cd-voters">
+                                                        {voters.map((v, i) => (
+                                                            <span key={i} className="gt-cd-voter" title={v.member}>
+                                                                <i style={{ background: v.approved ? "#22c55e" : "#ef4444" }} />
+                                                                {shortAddress(v.member)} {v.approved ? "approved" : "rejected"}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+                        </section>
+
+                        <section className="gt-cd-card">
+                            <h2>People</h2>
+                            <div className="gt-cd-people">
+                                <div>
+                                    <h3>Campaigner</h3>
+                                    <div className="gt-cd-person">
+                                        <code title={data.campaigner}>{data.campaigner}</code>
+                                        {isCampaigner && <span className="gt-cd-tag">You</span>}
+                                        <TxLink type="address" hash={data.campaigner} label="View" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <h3>Board members</h3>
+                                    {data.boardMembers.map((m, i) => (
+                                        <div key={m} className="gt-cd-person">
+                                            <span className="n">{i + 1}</span>
+                                            <code title={m}>{shortAddress(m)}</code>
+                                            {lower(m) === me && <span className="gt-cd-tag">You</span>}
+                                            <TxLink type="address" hash={m} label="View" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </section>
+                    </div>
+                </div>
+
+                {/* ───── recent donors: full width ───── */}
+                <section className="gt-cd-card gt-cd-donors">
+                    <div className="gt-cd-sechead">
+                        <h2>Recent donors</h2>
+                        <span className="gt-cd-count">{data.donorCount} donor{data.donorCount === 1 ? "" : "s"}</span>
+                    </div>
+
+                    {activity.status === "loading" ? (
+                        <div className="gt-cd-table">
+                            {[0, 1, 2].map((i) => <div key={i} className="gt-skeleton gt-cd-sk" style={{ height: 44, marginBottom: 10 }} />)}
+                        </div>
+                    ) : rows.length === 0 ? (
+                        <div className="gt-cd-empty">
+                            {open ? "No donations yet. Be the first to donate." : "This campaign received no donations."}
+                        </div>
+                    ) : (
+                        <>
+                            <div className="gt-cd-table" role="table">
+                                <div className="gt-cd-tr gt-cd-th" role="row">
+                                    <span className="c-n">No.</span><span className="c-d">Donor</span><span className="c-w">When</span>
+                                    <span className="c-a">Amount</span><span className="c-s">Share</span><span className="c-t">Transaction</span>
+                                </div>
+                                {rows.map((d, i) => {
+                                    const share = data.raised > 0n ? Number((d.amount * 1000n) / data.raised) / 10 : 0;
+                                    const refunded = stateKey === "failed" && !!activity.refunds[lower(d.donor)];
+                                    return (
+                                        <div key={d.key} className="gt-cd-tr" role="row">
+                                            <span className="c-n">{i + 1}</span>
+                                            <span className="c-d">
+                                                <code title={d.donor}>{shortAddress(d.donor)}</code>
+                                                {lower(d.donor) === me && <span className="gt-cd-tag">You</span>}
+                                                {refunded && <span className="gt-cd-tag is-warn">Refunded</span>}
+                                            </span>
+                                            <span className="c-w" title={d.ts ? formatDateTime(d.ts) : ""}>{d.ts ? timeAgo(d.ts, now) : "-"}</span>
+                                            <span className="c-a">{formatAmount(d.amount)} {symbol}</span>
+                                            <span className="c-s">{d.hash ? percentLabel(share) : "-"}</span>
+                                            <span className="c-t">{d.hash ? <TxLink hash={d.hash} label="View" /> : "-"}</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            {shown < totalRows && (
+                                <div className="gt-cd-more">
+                                    <button className="gt-btn gt-btn-secondary" onClick={() => setShown((s) => s + PAGE)}>
+                                        Show more
+                                    </button>
+                                </div>
+                            )}
+                            {totalRows >= MAX_ROWS && <p className="gt-cd-note">Showing the latest {MAX_ROWS} donations.</p>}
+                            {activity.status === "unavailable" && (
+                                <p className="gt-cd-note">Donation times and transaction links are unavailable from this network right now. Amounts are each donor's total.</p>
+                            )}
+                            {activity.partial && (
+                                <p className="gt-cd-note">This network limits history queries, so only recent activity is shown.</p>
+                            )}
+                        </>
+                    )}
+                </section>
+            </div>
+        </div>
+    );
 };
 
 export default CampaignDetail;

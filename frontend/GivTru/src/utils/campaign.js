@@ -60,3 +60,23 @@ export function timeLeft(deadlineSec, now = Date.now()) {
 }
 
 export const shortAddress = (a) => (a ? `${a.slice(0, 6)}...${a.slice(-4)}` : "");
+
+// "5 min ago", "3 hours ago", "2 days ago", then a plain date
+export function timeAgo(tsSec, now = Date.now()) {
+    if (!tsSec) return "-";
+    const s = Math.max(0, Math.floor(now / 1000 - tsSec));
+    if (s < 45) return "just now";
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${Math.max(m, 1)} min ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} hour${h === 1 ? "" : "s"} ago`;
+    const d = Math.floor(h / 24);
+    if (d < 30) return `${d} day${d === 1 ? "" : "s"} ago`;
+    return new Date(tsSec * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+export const formatDateTime = (tsSec) =>
+    new Date(tsSec * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+
+// same formula as Campaign.sol: (2 * boardSize + 2) / 3, integer division
+export const approvalsNeeded = (n) => Math.floor((2 * n + 2) / 3);
