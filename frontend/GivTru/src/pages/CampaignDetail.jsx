@@ -179,6 +179,31 @@ const css = `
 .gt-cd-state p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-muted); }
 .gt-cd-state .gt-btn { margin-top: 10px; }
 .gt-cd-sk { border-radius: 12px; }
+
+/* success dialog (donation / refund) */
+@keyframes gt-ok-in { from { opacity: 0; transform: translateY(14px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes gt-ok-pop { 0% { transform: scale(0.6); opacity: 0; } 70% { transform: scale(1.08); } 100% { transform: scale(1); opacity: 1; } }
+@keyframes gt-ok-draw { to { stroke-dashoffset: 0; } }
+.gt-ok-backdrop { position: fixed; inset: 0; z-index: 9990; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(15, 23, 42, 0.5); backdrop-filter: blur(4px); }
+.gt-ok { width: 420px; max-width: 100%; max-height: 92vh; overflow-y: auto; background: #ffffff; border-radius: 24px; padding: 32px 28px 24px; text-align: center; box-shadow: 0 30px 70px rgba(15, 23, 42, 0.3); animation: gt-ok-in 0.22s ease-out; }
+.gt-ok-icon { width: 76px; height: 76px; margin: 0 auto 14px; border-radius: 50%; background: #dcfce7; display: flex; align-items: center; justify-content: center; animation: gt-ok-pop 0.4s ease-out; }
+.gt-ok-icon svg { width: 44px; height: 44px; }
+.gt-ok-icon path { fill: none; stroke: #16a34a; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 40; animation: gt-ok-draw 0.45s 0.2s ease forwards; }
+.gt-ok h2 { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+.gt-ok-amount { margin: 10px 0 0; font-size: 32px; font-weight: 800; letter-spacing: -0.02em; color: var(--primary-ink); }
+.gt-ok-sub { margin: 4px 0 0; font-size: 14px; line-height: 1.5; color: var(--text-muted); overflow-wrap: anywhere; }
+.gt-ok-rows { margin: 20px 0 0; border: 1px solid var(--border); border-radius: 14px; text-align: left; }
+.gt-ok-rows > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; font-size: 14px; border-bottom: 1px solid var(--border); }
+.gt-ok-rows > div:last-child { border-bottom: none; }
+.gt-ok-rows span { color: var(--text-dim); }
+.gt-ok-rows strong { font-weight: 700; }
+.gt-ok-rows code { font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); }
+.gt-ok-note { margin: 14px 0 0; font-size: 13px; line-height: 1.6; color: var(--text-dim); }
+.gt-ok-actions { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
+.gt-ok-actions .gt-btn { display: block; width: 100%; padding: 13px; font-size: 15px; border-radius: 12px; text-align: center; text-decoration: none; }
+.gt-ok-done { background: none; border: none; padding: 10px; font: inherit; font-size: 14px; font-weight: 600; color: var(--text-muted); cursor: pointer; border-radius: 10px; }
+.gt-ok-done:hover { background: var(--surface-alt); color: var(--text); }
+@media (prefers-reduced-motion: reduce) { .gt-ok, .gt-ok-icon, .gt-ok-icon path { animation: none; stroke-dashoffset: 0; } }
 `;
 
 /* ───────── small helpers ───────── */
@@ -372,13 +397,70 @@ const requestBadge = (r) => {
     return { label: "Voting", cls: "gt-badge gt-badge-warning" };
 };
 
+/* ───────── success dialog ───────── */
+
+function SuccessModal({ kind, amount, symbol, campaignTitle, hash, explorer, networkName, onClose }) {
+    const toast = useToast();
+    const isRefund = kind === "refund";
+
+    useEffect(() => {
+        const onKey = (e) => e.key === "Escape" && onClose();
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
+
+    const copyLink = async () => {
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            toast.success("Campaign link copied");
+        } catch {
+            toast.error("Couldn't copy the link. Copy it from the address bar.");
+        }
+    };
+
+    return (
+        <div className="gt-ok-backdrop" onClick={onClose}>
+            <div className="gt-ok" role="dialog" aria-modal="true" aria-labelledby="gt-ok-title" onClick={(e) => e.stopPropagation()}>
+                <div className="gt-ok-icon">
+                    <svg viewBox="0 0 52 52" aria-hidden="true"><path d="M14 27l8 8 16-17" /></svg>
+                </div>
+                <h2 id="gt-ok-title">{isRefund ? "Refund claimed" : "Donation received"}</h2>
+                <p className="gt-ok-amount">{amount} {symbol}</p>
+                <p className="gt-ok-sub">{isRefund ? `returned to your wallet from ${campaignTitle}` : `to ${campaignTitle}`}</p>
+
+                <div className="gt-ok-rows">
+                    <div><span>Status</span><strong>Confirmed</strong></div>
+                    {networkName && <div><span>Network</span><strong>{networkName}</strong></div>}
+                    <div><span>Transaction</span><code title={hash}>{shortAddress(hash)}</code></div>
+                </div>
+
+                <p className="gt-ok-note">
+                    {isRefund
+                        ? "Your refund is recorded on-chain."
+                        : "Your donation is recorded on-chain and will appear in Recent donors."}
+                </p>
+
+                <div className="gt-ok-actions">
+                    {explorer && (
+                        <a className="gt-btn gt-btn-primary" href={`${explorer}/tx/${hash}`} target="_blank" rel="noopener noreferrer">
+                            View transaction
+                        </a>
+                    )}
+                    {!isRefund && <button className="gt-btn gt-btn-secondary" onClick={copyLink}>Copy campaign link</button>}
+                    <button className="gt-ok-done" onClick={onClose}>Done</button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 /* ───────── page ───────── */
 
 const CampaignDetail = () => {
     const { address } = useParams();
     const navigate = useNavigate();
     const toast = useToast();
-    const { account, network, symbol, connectWallet, loading: walletLoading } = useWallet();
+    const { account, network, symbol, explorer, connectWallet, loading: walletLoading } = useWallet();
     const { getCampaignContract } = useContract();
     const { core, activity, reload } = useCampaignData(address);
     const now = useNow();
@@ -386,7 +468,7 @@ const CampaignDetail = () => {
     const [amount, setAmount] = useState("");
     const [amountError, setAmountError] = useState("");
     const [donating, setDonating] = useState(false);
-    const [lastDonation, setLastDonation] = useState(null); // { amount, hash }
+    const [success, setSuccess] = useState(null);           // { kind: "donation" | "refund", amount, hash }
     const [claiming, setClaiming] = useState(false);
     const [claimed, setClaimed] = useState(null);           // { amount, hash } right after claiming
     const [shown, setShown] = useState(PAGE);
@@ -413,9 +495,13 @@ const CampaignDetail = () => {
             const contract = getCampaignContract(address);
             if (!contract) { toast.error("Your wallet isn't ready. Reconnect it and try again."); return; }
             const receipt = await toast.track(() => contract.donate({ value: wei }), {
-                pending: "Confirm the donation in your wallet...", success: "Donation received",
+                pending: "Confirm the donation in your wallet...", silent: true,
             });
-            if (receipt) { setLastDonation({ amount: v, hash: receipt.hash }); setAmount(""); reload(); }
+            if (receipt) {
+                setSuccess({ kind: "donation", amount: v, hash: receipt.hash });
+                setAmount("");
+                reload();
+            }
         } finally {
             setDonating(false);
         }
@@ -429,9 +515,13 @@ const CampaignDetail = () => {
             if (!contract) { toast.error("Your wallet isn't ready. Reconnect it and try again."); return; }
             const owed = data.mine;
             const receipt = await toast.track(() => contract.claimRefund(), {
-                pending: "Confirm the refund in your wallet...", success: "Refund claimed",
+                pending: "Confirm the refund in your wallet...", silent: true,
             });
-            if (receipt) { setClaimed({ amount: owed, hash: receipt.hash }); reload(); }
+            if (receipt) {
+                setClaimed({ amount: owed, hash: receipt.hash });
+                setSuccess({ kind: "refund", amount: formatAmount(owed), hash: receipt.hash });
+                reload();
+            }
         } finally {
             setClaiming(false);
         }
@@ -511,16 +601,6 @@ const CampaignDetail = () => {
     const donateCard = (
         <div className="gt-cd-card gt-cd-action">
             <h2>Make a donation</h2>
-
-            {lastDonation && (
-                <div className="gt-cd-notice">
-                    <ICheck size={18} />
-                    <div>
-                        <strong>Thank you. {lastDonation.amount} {symbol} received.</strong>
-                        <TxLink hash={lastDonation.hash} label="View transaction" />
-                    </div>
-                </div>
-            )}
 
             {stateKey === "goal_reached" && (
                 <div className="gt-cd-notice is-info">
@@ -643,6 +723,19 @@ const CampaignDetail = () => {
         <div className="gt-cd">
             <style>{css}</style>
             <div className="gt-cd-inner">
+                {success && (
+                    <SuccessModal
+                        kind={success.kind}
+                        amount={success.amount}
+                        symbol={symbol}
+                        campaignTitle={data.title}
+                        hash={success.hash}
+                        explorer={explorer}
+                        networkName={network?.name}
+                        onClose={() => setSuccess(null)}
+                    />
+                )}
+
                 <button className="gt-cd-back" onClick={() => navigate("/donate")}>
                     <IBack /> Back to campaigns
                 </button>

@@ -89,19 +89,24 @@ export function ToastProvider({ children }) {
                     tx: tx.hash,
                 });
                 const receipt = await tx.wait();
-                update(id, {
-                    type: "success",
-                    message: labels.success || "Transaction confirmed",
-                    tx: tx.hash,
-                    duration: 7000,
-                });
+                if (labels.silent) {
+                    // the caller shows its own success UI (e.g. a dialog), so just clear the progress toast
+                    dismiss(id);
+                } else {
+                    update(id, {
+                        type: "success",
+                        message: labels.success || "Transaction confirmed",
+                        tx: tx.hash,
+                        duration: 7000,
+                    });
+                }
                 return receipt;
             } catch (err) {
                 update(id, { type: "error", message: friendlyError(err), tx: undefined, duration: 8000 });
                 return null;
             }
         },
-        [push, update]
+        [push, update, dismiss]
     );
 
     const api = useMemo(
