@@ -1,845 +1,276 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useContract } from "../hooks/useContract";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
-import { ethers } from "ethers";
+import { useContract } from "../hooks/useContract";
+import WorkspaceHeader from "../components/WorkspaceHeader";
+import IpfsImage from "../components/IpfsImage";
+import {
+    campaignState, STATE_META, percentFunded, percentLabel, formatAmount, timeLeft,
+} from "../utils/campaign";
+
+const css = `
+.gt-md { min-height: calc(100vh - 69px); background: #f1f5f9; }
+.gt-md-inner { max-width: 1200px; margin: 0 auto; padding: 28px var(--page-gutter) 72px; }
+.gt-md-list { display: flex; flex-direction: column; gap: 14px; }
+.gt-md-label { margin: 0 0 14px; font-size: 13px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* one campaign = one wide row with a status rail (very different from the Browse cards) */
+.gt-mc {
+    position: relative; display: grid; grid-template-columns: 88px minmax(0, 1fr) auto; gap: 20px; align-items: center;
+    padding: 18px 22px 18px 28px; background: #ffffff; border: 1px solid var(--border); border-radius: 16px;
+    text-decoration: none; color: inherit; overflow: hidden;
+    transition: box-shadow 0.18s, border-color 0.18s, transform 0.18s;
+}
+.gt-mc:hover { box-shadow: 0 10px 28px rgba(15, 23, 42, 0.09); border-color: #cbd5e1; transform: translateY(-1px); }
+.gt-mc:focus-visible { outline: 3px solid rgba(34, 197, 94, 0.45); outline-offset: 2px; }
+.gt-mc-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: #22c55e; }
+.gt-mc[data-state="funded"] .gt-mc-rail { background: #0f172a; }
+.gt-mc[data-state="failed"] .gt-mc-rail { background: #f59e0b; }
+.gt-mc-thumb { position: relative; width: 88px; height: 88px; border-radius: 14px; overflow: hidden; background: #f1f5f9; }
+.gt-mc-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #dcfce7 0%, #e0e7ff 100%); color: #16a34a; }
+.gt-mc-main { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.gt-mc-titlerow { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.gt-mc-title { margin: 0; min-width: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gt-mc-bar { height: 6px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+.gt-mc-fill { height: 100%; border-radius: 999px; background: #22c55e; }
+.gt-mc-fill.is-full { background: #16a34a; }
+.gt-mc-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 13px; color: var(--text-muted); }
+.gt-mc-meta b { font-weight: 700; color: var(--text); }
+.gt-mc-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; text-align: right; }
+.gt-mc-funds span { display: block; font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.gt-mc-funds strong { font-size: 18px; font-weight: 800; }
+.gt-mc-chip { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.gt-mc-chip.warn { background: #fef3c7; color: #92400e; }
+.gt-mc-chip.ok { background: #dcfce7; color: #15803d; }
+.gt-mc-chip.muted { background: #f1f5f9; color: #475569; }
+.gt-mc-cta { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; color: var(--primary-ink); }
+@media (max-width: 760px) {
+    .gt-mc { grid-template-columns: 64px minmax(0, 1fr); gap: 14px; padding: 16px 16px 16px 22px; }
+    .gt-mc-thumb { width: 64px; height: 64px; border-radius: 12px; }
+    .gt-mc-side { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; text-align: left; flex-wrap: wrap; }
+}
+
+.gt-md-state { max-width: 520px; margin: 56px auto; padding: 40px 28px; text-align: center; background: #ffffff; border: 1px dashed var(--border-strong); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.gt-md-state h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.gt-md-state p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-muted); }
+.gt-md-state .gt-btn { margin-top: 10px; }
+.gt-md-warn { margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; color: #78350f; font-size: 14px; }
+.gt-md-warn button { margin-left: 6px; padding: 0; background: none; border: none; font: inherit; font-weight: 700; color: inherit; text-decoration: underline; cursor: pointer; }
+`;
+
+const Svg = ({ children, size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {children}
+    </svg>
+);
+const IChevron = () => <Svg><path d="M9 6l6 6-6 6" /></Svg>;
+const IHeart = () => <Svg size={26}><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z" /></Svg>;
+
+const useNow = (ms = 60000) => {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), ms);
+        return () => clearInterval(id);
+    }, [ms]);
+    return now;
+};
+
+/** Reads the connected wallet's campaigns from the factory, plus what each one needs from the campaigner. */
+function useMyCampaigns() {
+    const { account, chainId, provider } = useWallet();
+    const { getFactoryContractReadOnly, getCampaignContractReadOnly } = useContract();
+    const [state, setState] = useState({ status: "loading", campaigns: [], failed: 0 });
+    const [reloadKey, setReloadKey] = useState(0);
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            if (!account) { setState({ status: "nowallet", campaigns: [], failed: 0 }); return; }
+            setState((s) => ({ ...s, status: "loading" }));
+            try {
+                const factory = getFactoryContractReadOnly();
+                if (!factory) { setState({ status: "unsupported", campaigns: [], failed: 0 }); return; }
+
+                const addresses = await factory.getCampaignsByCampaigner(account);
+                const rows = await Promise.all(
+                    [...addresses].map(async (address, index) => {
+                        try {
+                            const c = getCampaignContractReadOnly(address);
+                            const [title, ipfsHash, goal, raised, deadline, donorCount, balance, totalRequests] =
+                                await Promise.all([
+                                    c.title(), c.ipfsHash(), c.goalAmount(), c.totalDonated(), c.deadline(),
+                                    c.getDonorCount(), c.getContractBalance(), c.getTotalRequests(),
+                                ]);
+                            const reqs = await Promise.all(
+                                Array.from({ length: Number(totalRequests) }, (_, i) => c.requests(i))
+                            );
+                            const pending = reqs.filter((r) => Number(r.status) === 0);
+                            return {
+                                address, index, title, ipfsHash, goal, raised, balance,
+                                deadline: Number(deadline),
+                                donorCount: Number(donorCount),
+                                pendingCount: pending.length,
+                                reserved: pending.reduce((s, r) => s + r.amount, 0n),
+                            };
+                        } catch (err) {
+                            console.error("Could not load campaign", address, err);
+                            return null;
+                        }
+                    })
+                );
+                if (cancelled) return;
+                const ok = rows.filter(Boolean).sort((a, b) => b.index - a.index); // newest first
+                setState({ status: "ready", campaigns: ok, failed: rows.length - ok.length });
+            } catch (err) {
+                console.error("Could not load your campaigns", err);
+                if (!cancelled) setState({ status: "error", campaigns: [], failed: 0 });
+            }
+        })();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [account, chainId, provider, reloadKey]);
+
+    return { ...state, reload: () => setReloadKey((k) => k + 1) };
+}
+
+// what the campaigner should know about at a glance
+function attention(c, stateKey) {
+    if (c.pendingCount > 0) {
+        return { cls: "warn", text: `${c.pendingCount} request${c.pendingCount === 1 ? "" : "s"} awaiting votes` };
+    }
+    if (stateKey === "failed") return { cls: "muted", text: "Goal missed, refunds open" };
+    const free = c.balance > c.reserved ? c.balance - c.reserved : 0n;
+    if ((stateKey === "funded" || stateKey === "goal_reached") && free > 0n) {
+        return { cls: "ok", text: "Funds ready to withdraw" };
+    }
+    return null;
+}
+
+function CampaignRow({ c, symbol, now }) {
+    const stateKey = campaignState(c, now);
+    const meta = STATE_META[stateKey];
+    const pct = percentFunded(c.raised, c.goal);
+    const note = attention(c, stateKey);
+
+    return (
+        <Link to={`/dashboard/${c.address}`} className="gt-mc" data-state={stateKey}>
+            <span className="gt-mc-rail" />
+            <div className="gt-mc-thumb">
+                <IpfsImage hash={c.ipfsHash} fallback={<div className="gt-mc-ph"><IHeart /></div>} />
+            </div>
+
+            <div className="gt-mc-main">
+                <div className="gt-mc-titlerow">
+                    <h3 className="gt-mc-title" title={c.title}>{c.title}</h3>
+                    <span className={meta.badge}>{meta.label}</span>
+                </div>
+                <div className="gt-mc-bar">
+                    <div className={`gt-mc-fill${pct >= 100 ? " is-full" : ""}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                </div>
+                <div className="gt-mc-meta">
+                    <span><b>{formatAmount(c.raised)} {symbol}</b> of {formatAmount(c.goal)} ({percentLabel(pct)})</span>
+                    <span>{c.donorCount} donor{c.donorCount === 1 ? "" : "s"}</span>
+                    <span>{stateKey === "active" || stateKey === "goal_reached" ? timeLeft(c.deadline, now) : `Ended ${new Date(c.deadline * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`}</span>
+                </div>
+            </div>
+
+            <div className="gt-mc-side">
+                <div className="gt-mc-funds"><span>In contract</span><strong>{formatAmount(c.balance)} {symbol}</strong></div>
+                {note && <span className={`gt-mc-chip ${note.cls}`}>{note.text}</span>}
+                <span className="gt-mc-cta">Manage <IChevron /></span>
+            </div>
+        </Link>
+    );
+}
 
 const CampaignerDashboard = () => {
     const navigate = useNavigate();
-    const { account, symbol, explorer, chainId } = useWallet();
-    const { getFactoryContractReadOnly, getCampaignContract, getCampaignContractReadOnly } = useContract();
+    const { symbol, network, connectWallet, loading: walletLoading } = useWallet();
+    const { status, campaigns, failed, reload } = useMyCampaigns();
+    const now = useNow();
 
-    const [campaigns, setCampaigns]         = useState([]);
-    const [selected, setSelected]           = useState(null); // selected campaign address
-    const [campaignData, setCampaignData]   = useState(null);
-    const [requests, setRequests]           = useState([]);
-    const [loading, setLoading]             = useState(true);
-    const [submitting, setSubmitting]       = useState(false);
-    const [error, setError]                 = useState(null);
-    const [success, setSuccess]             = useState(null);
+    const totals = useMemo(() => ({
+        raised: campaigns.reduce((s, c) => s + c.raised, 0n),
+        pending: campaigns.reduce((s, c) => s + c.pendingCount, 0),
+    }), [campaigns]);
 
-    // withdrawal request form
-    const [reqForm, setReqForm] = useState({
-        description: "",
-        amount: "",
-    });
+    const ready = status === "ready";
+    const stats = [
+        { label: "Campaigns", value: ready ? campaigns.length : "-" },
+        { label: "Total raised", value: ready ? `${formatAmount(totals.raised)} ${symbol}` : "-" },
+        { label: "Awaiting board votes", value: ready ? totals.pending : "-", hint: ready && totals.pending > 0 ? "Needs your trustees" : undefined },
+    ];
 
-    // ─────────────────────────────────────────
-    //  FETCH CAMPAIGNER'S CAMPAIGNS
-    // ─────────────────────────────────────────
-
-    useEffect(() => {
-        if (account) fetchMyCampaigns();
-    }, [account, chainId]);
-
-    const fetchMyCampaigns = async () => {
-        try {
-            setLoading(true);
-            const factory = getFactoryContractReadOnly();
-            if (!factory) return;
-
-            const addresses = await factory.getCampaignsByCampaigner(account);
-            setCampaigns(addresses);
-
-            if (addresses.length > 0) {
-                setSelected(addresses[0]);
-                await fetchCampaignData(addresses[0]);
-            }
-        } catch (err) {
-            console.error(err);
-            setError("Failed to load your campaigns");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const fetchCampaignData = async (address) => {
-        try {
-            const contract = getCampaignContractReadOnly(address);
-
-            const [
-                title,
-                description,
-                goalAmount,
-                totalDonated,
-                deadline,
-                status,
-                donorCount,
-                totalRequests,
-                balance,
-            ] = await Promise.all([
-                contract.title(),
-                contract.description(),
-                contract.goalAmount(),
-                contract.totalDonated(),
-                contract.deadline(),
-                contract.status(),
-                contract.getDonorCount(),
-                contract.getTotalRequests(),
-                contract.getContractBalance(),
-            ]);
-
-            // fetch all withdrawal requests
-            const reqList = [];
-            const total = Number(totalRequests);
-            for (let i = 0; i < total; i++) {
-                const req = await contract.requests(i);
-                reqList.push({
-                    id: i,
-                    description: req.description,
-                    amount: ethers.formatEther(req.amount),
-                    approvalCount: Number(req.approvalCount),
-                    rejectionCount: Number(req.rejectionCount),
-                    status: Number(req.status), // 0=Pending, 1=Approved, 2=Rejected
-                    executed: req.executed,
-                });
-            }
-
-            setCampaignData({
-                address,
-                title,
-                description,
-                goalAmount:    ethers.formatEther(goalAmount),
-                totalDonated:  ethers.formatEther(totalDonated),
-                deadline:      new Date(Number(deadline) * 1000),
-                status:        Number(status),
-                donorCount:    Number(donorCount),
-                totalRequests: total,
-                balance:       ethers.formatEther(balance),
-            });
-
-            setRequests(reqList);
-
-        } catch (err) {
-            console.error(err);
-            setError("Failed to load campaign data");
-        }
-    };
-
-    // ─────────────────────────────────────────
-    //  CREATE WITHDRAWAL REQUEST
-    // ─────────────────────────────────────────
-
-    const handleCreateRequest = async () => {
-        if (!reqForm.description.trim()) {
-            setError("Description is required"); return;
-        }
-        if (!reqForm.amount || parseFloat(reqForm.amount) <= 0) {
-            setError("Amount must be greater than 0"); return;
-        }
-        if (parseFloat(reqForm.amount) > parseFloat(campaignData.balance)) {
-            setError("Amount exceeds contract balance"); return;
-        }
-
-        try {
-            setSubmitting(true);
-            setError(null);
-            setSuccess(null);
-
-            const contract = getCampaignContract(selected);
-            if (!contract) { setError("Contract not loaded"); return; }
-
-            const tx = await contract.createWithdrawalRequest(
-                reqForm.description,
-                ethers.parseEther(reqForm.amount)
-            );
-
-            setSuccess("Transaction submitted! Waiting for confirmation...");
-            await tx.wait();
-            setSuccess("✅ Withdrawal request created successfully!");
-            setReqForm({ description: "", amount: "" });
-
-            // refresh
-            await fetchCampaignData(selected);
-
-        } catch (err) {
-            console.error(err);
-            if (err.code === 4001) {
-                setError("Transaction rejected.");
-            } else {
-                setError(err.message || "Failed to create request");
-            }
-        } finally {
-            setSubmitting(false);
-        }
-    };
-
-    // ─────────────────────────────────────────
-    //  HELPERS
-    // ─────────────────────────────────────────
-
-    const getStatusInfo = (status) => {
-        switch (status) {
-            case 0: return { label: "Active",   color: "#22c55e", bg: "#052e16" };
-            case 1: return { label: "Expired",  color: "#f59e0b", bg: "#451a03" };
-            case 2: return { label: "Closed",   color: "#ef4444", bg: "#450a0a" };
-            default: return { label: "Unknown", color: "#94a3b8", bg: "#1e293b" };
-        }
-    };
-
-    const getReqStatusInfo = (status) => {
-        switch (status) {
-            case 0: return { label: "Pending",  color: "#f59e0b", bg: "#451a03" };
-            case 1: return { label: "Approved", color: "#22c55e", bg: "#052e16" };
-            case 2: return { label: "Rejected", color: "#ef4444", bg: "#450a0a" };
-            default: return { label: "Unknown", color: "#94a3b8", bg: "#1e293b" };
-        }
-    };
-
-    const getProgress = (donated, goal) => {
-        const pct = (parseFloat(donated) / parseFloat(goal)) * 100;
-        return Math.min(pct, 100).toFixed(1);
-    };
-
-    const getTimeLeft = (deadline) => {
-        const diff = deadline - new Date();
-        if (diff <= 0) return "Expired";
-        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
-        return `${days}d left`;
-    };
-
-    // ─────────────────────────────────────────
-    //  LOADING / EMPTY
-    // ─────────────────────────────────────────
-
-    if (!account) return (
-        <div style={styles.centered}>
-            <p style={styles.msg}>Please connect your wallet to view your dashboard.</p>
-        </div>
-    );
-
-    if (loading) return (
-        <div style={styles.centered}>
-            <p style={styles.msg}>⏳ Loading your campaigns...</p>
-        </div>
-    );
-
-    if (campaigns.length === 0) return (
-        <div style={styles.centered}>
-            <div style={styles.emptyIcon}>📭</div>
-            <h2 style={styles.emptyTitle}>No campaigns yet</h2>
-            <p style={styles.emptyDesc}>You haven't launched any campaigns.</p>
-            <button style={styles.primaryBtn} onClick={() => navigate("/register")}>
-                🚀 Launch a Campaign
-            </button>
-        </div>
-    );
-
-    const statusInfo = campaignData ? getStatusInfo(campaignData.status) : null;
-    const progress   = campaignData ? getProgress(campaignData.totalDonated, campaignData.goalAmount) : 0;
-
-    // ─────────────────────────────────────────
-    //  RENDER
-    // ─────────────────────────────────────────
+    let body;
+    if (status === "nowallet") {
+        body = (
+            <div className="gt-md-state">
+                <h2>Connect your wallet</h2>
+                <p>Connect the wallet you used to start your campaigns.</p>
+                <button className="gt-btn gt-btn-primary" onClick={connectWallet} disabled={walletLoading}>
+                    {walletLoading ? "Connecting..." : "Connect Wallet"}
+                </button>
+            </div>
+        );
+    } else if (status === "unsupported") {
+        body = (
+            <div className="gt-md-state">
+                <h2>GivTru isn't on this network yet</h2>
+                <p>Use the network switcher in the navbar to pick Arbitrum Sepolia or MST.</p>
+            </div>
+        );
+    } else if (status === "error") {
+        body = (
+            <div className="gt-md-state">
+                <h2>Couldn't load your campaigns</h2>
+                <p>Something went wrong while reading from the blockchain. Check your connection and try again.</p>
+                <button className="gt-btn gt-btn-primary" onClick={reload}>Try again</button>
+            </div>
+        );
+    } else if (status === "loading") {
+        body = (
+            <div className="gt-md-list">
+                {[0, 1, 2].map((i) => <div key={i} className="gt-skeleton" style={{ height: 124, borderRadius: 16 }} />)}
+            </div>
+        );
+    } else if (campaigns.length === 0) {
+        body = (
+            <div className="gt-md-state">
+                <h2>No campaigns on {network?.name || "this network"} yet</h2>
+                <p>Campaigns you start with this wallet will show up here. Switch networks if you started one elsewhere.</p>
+                <button className="gt-btn gt-btn-primary" onClick={() => navigate("/register")}>Start a campaign</button>
+            </div>
+        );
+    } else {
+        body = (
+            <>
+                {failed > 0 && (
+                    <p className="gt-md-warn">
+                        {failed} campaign{failed === 1 ? "" : "s"} couldn't be loaded.<button onClick={reload}>Retry</button>
+                    </p>
+                )}
+                <p className="gt-md-label">Your campaigns on {network?.name}</p>
+                <div className="gt-md-list">
+                    {campaigns.map((c) => <CampaignRow key={c.address} c={c} symbol={symbol} now={now} />)}
+                </div>
+            </>
+        );
+    }
 
     return (
-        <div style={styles.container}>
-
-            {/* Header */}
-            <div style={styles.header}>
-                <h1 style={styles.title}>🏛️ Campaigner Dashboard</h1>
-                <p style={styles.subtitle}>Manage your campaigns and withdrawal requests</p>
-            </div>
-
-            {/* Campaign selector if multiple */}
-            {campaigns.length > 1 && (
-                <div style={styles.selectorRow}>
-                    <label style={styles.selectorLabel}>Select Campaign:</label>
-                    <select
-                        style={styles.selector}
-                        value={selected}
-                        onChange={(e) => {
-                            setSelected(e.target.value);
-                            fetchCampaignData(e.target.value);
-                        }}
-                    >
-                        {campaigns.map((addr, i) => (
-                            <option key={addr} value={addr}>
-                                Campaign {i + 1} — {addr.slice(0, 10)}...
-                            </option>
-                        ))}
-                    </select>
-                </div>
-            )}
-
-            {campaignData && (
-                <div style={styles.layout}>
-
-                    {/* ── LEFT COLUMN ── */}
-                    <div style={styles.leftCol}>
-
-                        {/* Campaign Stats */}
-                        <div style={styles.card}>
-                            <div style={styles.cardHeader}>
-                                <h2 style={styles.cardTitle}>{campaignData.title}</h2>
-                                <div style={{
-                                    ...styles.badge,
-                                    color: statusInfo.color,
-                                    background: statusInfo.bg,
-                                    border: `1px solid ${statusInfo.color}`,
-                                }}>
-                                    {statusInfo.label}
-                                </div>
-                            </div>
-
-                            {/* Progress */}
-                            <div style={styles.progressBar}>
-                                <div style={{
-                                    ...styles.progressFill,
-                                    width: `${progress}%`,
-                                    background: progress >= 100 ? "#22c55e" : "#3b82f6",
-                                }} />
-                            </div>
-
-                            {/* Stats grid */}
-                            <div style={styles.statsGrid}>
-                                <div style={styles.statBox}>
-                                    <span style={styles.statVal}>{campaignData.totalDonated} {symbol}</span>
-                                    <span style={styles.statLbl}>Raised</span>
-                                </div>
-                                <div style={styles.statBox}>
-                                    <span style={styles.statVal}>{campaignData.goalAmount} {symbol}</span>
-                                    <span style={styles.statLbl}>Goal</span>
-                                </div>
-                                <div style={styles.statBox}>
-                                    <span style={styles.statVal}>{campaignData.balance} {symbol}</span>
-                                    <span style={styles.statLbl}>Available</span>
-                                </div>
-                                <div style={styles.statBox}>
-                                    <span style={styles.statVal}>{campaignData.donorCount}</span>
-                                    <span style={styles.statLbl}>Donors</span>
-                                </div>
-                                <div style={styles.statBox}>
-                                    <span style={styles.statVal}>{progress}%</span>
-                                    <span style={styles.statLbl}>Funded</span>
-                                </div>
-                                <div style={styles.statBox}>
-                                    <span style={styles.statVal}>{getTimeLeft(campaignData.deadline)}</span>
-                                    <span style={styles.statLbl}>Remaining</span>
-                                </div>
-                            </div>
-
-                            {/* Contract address */}
-                            <div style={styles.contractRow}>
-                                <span style={styles.contractLabel}>Contract:</span>
-                                <span style={styles.contractAddr}>
-                                    {campaignData.address.slice(0, 10)}...{campaignData.address.slice(-8)}
-                                </span>
-                                <a
-                                    href={`${explorer}/address/${campaignData.address}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    style={styles.etherscanLink}
-                                >
-                                    ↗ Explorer
-                                </a>
-                            </div>
-                        </div>
-
-                        {/* Withdrawal Requests List */}
-                        <div style={styles.card}>
-                            <h3 style={styles.sectionTitle}>
-                                📋 Withdrawal Requests ({requests.length})
-                            </h3>
-
-                            {requests.length === 0 ? (
-                                <p style={styles.noReqs}>
-                                    No withdrawal requests yet. Create one below.
-                                </p>
-                            ) : (
-                                requests.map((req) => {
-                                    const reqStatus = getReqStatusInfo(req.status);
-                                    return (
-                                        <div key={req.id} style={styles.reqCard}>
-                                            <div style={styles.reqHeader}>
-                                                <span style={styles.reqId}>#{req.id + 1}</span>
-                                                <div style={{
-                                                    ...styles.reqBadge,
-                                                    color: reqStatus.color,
-                                                    background: reqStatus.bg,
-                                                    border: `1px solid ${reqStatus.color}`,
-                                                }}>
-                                                    {reqStatus.label}
-                                                </div>
-                                                {req.executed && (
-                                                    <div style={styles.executedBadge}>
-                                                        ✅ Executed
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            <p style={styles.reqDesc}>{req.description}</p>
-
-                                            <div style={styles.reqMeta}>
-                                                <span style={styles.reqAmount}>
-                                                    💰 {req.amount} {symbol}
-                                                </span>
-                                                <span style={styles.reqVotes}>
-                                                    ✅ {req.approvalCount} approved
-                                                </span>
-                                                <span style={styles.reqVotes}>
-                                                    ❌ {req.rejectionCount} rejected
-                                                </span>
-                                            </div>
-                                        </div>
-                                    );
-                                })
-                            )}
-                        </div>
-
-                    </div>
-
-                    {/* ── RIGHT COLUMN ── */}
-                    <div style={styles.rightCol}>
-
-                        {/* Create Withdrawal Request */}
-                        <div style={styles.reqFormCard}>
-                            <h3 style={styles.formTitle}>📤 New Withdrawal Request</h3>
-                            <p style={styles.formNote}>
-                                Request funds from the campaign contract.
-                                Board members will vote to approve or reject.
-                            </p>
-
-                            {error && <div style={styles.errorBox}>⚠️ {error}</div>}
-                            {success && <div style={styles.successBox}>{success}</div>}
-
-                            <div style={styles.field}>
-                                <label style={styles.label}>Description *</label>
-                                <textarea
-                                    style={styles.textarea}
-                                    placeholder="What will these funds be used for?"
-                                    value={reqForm.description}
-                                    onChange={(e) => setReqForm({...reqForm, description: e.target.value})}
-                                    rows={4}
-                                />
-                            </div>
-
-                            <div style={styles.field}>
-                                <label style={styles.label}>Amount ({symbol}) *</label>
-                                <input
-                                    style={styles.input}
-                                    type="number"
-                                    placeholder="0.00"
-                                    min="0"
-                                    step="0.001"
-                                    value={reqForm.amount}
-                                    onChange={(e) => setReqForm({...reqForm, amount: e.target.value})}
-                                />
-                                <p style={styles.balanceNote}>
-                                    Available: {campaignData.balance} {symbol}
-                                </p>
-                            </div>
-
-                            <button
-                                style={{
-                                    ...styles.submitBtn,
-                                    opacity: submitting ? 0.6 : 1,
-                                    cursor: submitting ? "not-allowed" : "pointer",
-                                }}
-                                onClick={handleCreateRequest}
-                                disabled={submitting}
-                            >
-                                {submitting ? "⏳ Submitting..." : "📤 Submit Request"}
-                            </button>
-                        </div>
-
-                        {/* Info box */}
-                        <div style={styles.infoCard}>
-                            <h4 style={styles.infoTitle}>ℹ️ How withdrawals work</h4>
-                            <div style={styles.infoSteps}>
-                                <div style={styles.infoStep}>
-                                    <span style={styles.stepNum}>1</span>
-                                    <span style={styles.stepText}>You create a withdrawal request with description and amount</span>
-                                </div>
-                                <div style={styles.infoStep}>
-                                    <span style={styles.stepNum}>2</span>
-                                    <span style={styles.stepText}>Board members vote to approve or reject</span>
-                                </div>
-                                <div style={styles.infoStep}>
-                                    <span style={styles.stepNum}>3</span>
-                                    <span style={styles.stepText}>2/3 supermajority approval releases funds to you</span>
-                                </div>
-                                <div style={styles.infoStep}>
-                                    <span style={styles.stepNum}>4</span>
-                                    <span style={styles.stepText}>2/3 rejection permanently rejects the request</span>
-                                </div>
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-            )}
+        <div className="gt-md">
+            <style>{css}</style>
+            <WorkspaceHeader
+                eyebrow="Campaigner workspace"
+                title="My campaigns"
+                subtitle="Track funding, manage withdrawals and see what needs your attention."
+                actions={<button className="gt-btn gt-btn-primary" onClick={() => navigate("/register")}>New campaign</button>}
+                stats={stats}
+            />
+            <main className="gt-md-inner">{body}</main>
         </div>
     );
-};
-
-const styles = {
-    container: {
-        minHeight: "100vh",
-        background: "#0f172a",
-        padding: "40px 20px",
-        fontFamily: "sans-serif",
-        maxWidth: "1200px",
-        margin: "0 auto",
-    },
-    centered: {
-        minHeight: "80vh",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        gap: "16px",
-        background: "#0f172a",
-        fontFamily: "sans-serif",
-    },
-    header: {
-        marginBottom: "32px",
-    },
-    title: {
-        fontSize: "32px",
-        fontWeight: "800",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    subtitle: {
-        color: "#94a3b8",
-        marginTop: "8px",
-        fontSize: "15px",
-    },
-    selectorRow: {
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        marginBottom: "24px",
-    },
-    selectorLabel: {
-        color: "#94a3b8",
-        fontSize: "14px",
-    },
-    selector: {
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "8px",
-        padding: "8px 16px",
-        color: "#f1f5f9",
-        fontSize: "14px",
-    },
-    layout: {
-        display: "flex",
-        gap: "24px",
-        alignItems: "flex-start",
-        flexWrap: "wrap",
-    },
-    leftCol: {
-        flex: 2,
-        minWidth: "320px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "20px",
-    },
-    rightCol: {
-        flex: 1,
-        minWidth: "280px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "20px",
-        position: "sticky",
-        top: "100px",
-    },
-    card: {
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "16px",
-        padding: "24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-    },
-    cardHeader: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        flexWrap: "wrap",
-        gap: "12px",
-    },
-    cardTitle: {
-        fontSize: "22px",
-        fontWeight: "700",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    badge: {
-        padding: "4px 12px",
-        borderRadius: "20px",
-        fontSize: "12px",
-        fontWeight: "700",
-    },
-    progressBar: {
-        background: "#0f172a",
-        borderRadius: "100px",
-        height: "8px",
-        overflow: "hidden",
-    },
-    progressFill: {
-        height: "100%",
-        borderRadius: "100px",
-        transition: "width 0.5s",
-    },
-    statsGrid: {
-        display: "grid",
-        gridTemplateColumns: "repeat(3, 1fr)",
-        gap: "12px",
-    },
-    statBox: {
-        background: "#0f172a",
-        borderRadius: "10px",
-        padding: "12px",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: "4px",
-    },
-    statVal: {
-        fontSize: "16px",
-        fontWeight: "700",
-        color: "#22c55e",
-    },
-    statLbl: {
-        fontSize: "11px",
-        color: "#64748b",
-    },
-    contractRow: {
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        flexWrap: "wrap",
-    },
-    contractLabel: {
-        color: "#64748b",
-        fontSize: "13px",
-    },
-    contractAddr: {
-        color: "#94a3b8",
-        fontFamily: "monospace",
-        fontSize: "13px",
-    },
-    etherscanLink: {
-        color: "#3b82f6",
-        fontSize: "13px",
-        textDecoration: "none",
-    },
-    sectionTitle: {
-        fontSize: "16px",
-        fontWeight: "700",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    noReqs: {
-        color: "#64748b",
-        fontSize: "14px",
-        textAlign: "center",
-        padding: "20px 0",
-    },
-    reqCard: {
-        background: "#0f172a",
-        borderRadius: "10px",
-        padding: "16px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "10px",
-        border: "1px solid #1e293b",
-    },
-    reqHeader: {
-        display: "flex",
-        alignItems: "center",
-        gap: "10px",
-    },
-    reqId: {
-        color: "#64748b",
-        fontSize: "13px",
-        fontWeight: "700",
-    },
-    reqBadge: {
-        padding: "3px 10px",
-        borderRadius: "20px",
-        fontSize: "11px",
-        fontWeight: "700",
-    },
-    executedBadge: {
-        color: "#22c55e",
-        fontSize: "12px",
-    },
-    reqDesc: {
-        color: "#94a3b8",
-        fontSize: "14px",
-        margin: 0,
-        lineHeight: 1.5,
-    },
-    reqMeta: {
-        display: "flex",
-        gap: "16px",
-        flexWrap: "wrap",
-    },
-    reqAmount: {
-        color: "#22c55e",
-        fontSize: "13px",
-        fontWeight: "700",
-    },
-    reqVotes: {
-        color: "#94a3b8",
-        fontSize: "13px",
-    },
-    reqFormCard: {
-        background: "#1e293b",
-        border: "2px solid #22c55e",
-        borderRadius: "16px",
-        padding: "24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-    },
-    formTitle: {
-        fontSize: "18px",
-        fontWeight: "700",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    formNote: {
-        color: "#64748b",
-        fontSize: "13px",
-        margin: 0,
-        lineHeight: 1.5,
-    },
-    field: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-    },
-    label: {
-        color: "#94a3b8",
-        fontSize: "14px",
-        fontWeight: "600",
-    },
-    input: {
-        background: "#0f172a",
-        border: "1px solid #334155",
-        borderRadius: "8px",
-        padding: "12px 16px",
-        color: "#f1f5f9",
-        fontSize: "15px",
-        outline: "none",
-    },
-    textarea: {
-        background: "#0f172a",
-        border: "1px solid #334155",
-        borderRadius: "8px",
-        padding: "12px 16px",
-        color: "#f1f5f9",
-        fontSize: "14px",
-        outline: "none",
-        resize: "vertical",
-        fontFamily: "sans-serif",
-    },
-    balanceNote: {
-        color: "#64748b",
-        fontSize: "12px",
-        margin: 0,
-    },
-    submitBtn: {
-        background: "#22c55e",
-        color: "#000",
-        border: "none",
-        padding: "14px",
-        borderRadius: "10px",
-        fontWeight: "bold",
-        fontSize: "15px",
-    },
-    infoCard: {
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "16px",
-        padding: "24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-    },
-    infoTitle: {
-        fontSize: "15px",
-        fontWeight: "700",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    infoSteps: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "12px",
-    },
-    infoStep: {
-        display: "flex",
-        alignItems: "flex-start",
-        gap: "12px",
-    },
-    stepNum: {
-        background: "#22c55e",
-        color: "#000",
-        borderRadius: "50%",
-        width: "24px",
-        height: "24px",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: "12px",
-        fontWeight: "800",
-        flexShrink: 0,
-    },
-    stepText: {
-        color: "#94a3b8",
-        fontSize: "13px",
-        lineHeight: 1.5,
-    },
-    errorBox: {
-        background: "#450a0a",
-        border: "1px solid #ef4444",
-        color: "#fca5a5",
-        padding: "10px 14px",
-        borderRadius: "8px",
-        fontSize: "13px",
-    },
-    successBox: {
-        background: "#052e16",
-        border: "1px solid #22c55e",
-        color: "#86efac",
-        padding: "10px 14px",
-        borderRadius: "8px",
-        fontSize: "13px",
-    },
-    msg: {
-        color: "#94a3b8",
-        fontSize: "16px",
-    },
-    emptyIcon: {
-        fontSize: "64px",
-    },
-    emptyTitle: {
-        color: "#f1f5f9",
-        fontSize: "24px",
-        margin: 0,
-    },
-    emptyDesc: {
-        color: "#94a3b8",
-        fontSize: "15px",
-        margin: 0,
-    },
-    primaryBtn: {
-        background: "#22c55e",
-        color: "#000",
-        border: "none",
-        padding: "14px 28px",
-        borderRadius: "10px",
-        fontWeight: "bold",
-        cursor: "pointer",
-        fontSize: "16px",
-    },
 };
 
 export default CampaignerDashboard;

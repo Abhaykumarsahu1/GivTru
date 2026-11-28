@@ -123,7 +123,10 @@ const Navbar = () => {
     const navigate = useNavigate();
     const location = useLocation();
 
-    const isActive = (path) => location.pathname === path;
+    const isActive = (path) =>
+    location.pathname === path ||
+    location.pathname.startsWith(path + "/") ||
+    (path === "/donate" && location.pathname.startsWith("/campaign/"));
     const unsupported = account && !NETWORKS[chainId];
     if (location.pathname === "/register") return null;
 

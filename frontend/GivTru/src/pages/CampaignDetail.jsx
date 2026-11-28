@@ -791,7 +791,7 @@ const CampaignDetail = () => {
                             <div className="gt-cd-card gt-cd-action is-neutral">
                                 <h2>You started this campaign</h2>
                                 <p className="gt-cd-muted">Create withdrawal requests and track votes from your campaigns page.</p>
-                                <button className="gt-btn gt-btn-secondary" onClick={() => navigate("/dashboard")}>Manage campaign</button>
+                                <button className="gt-btn gt-btn-secondary" onClick={() => navigate(`/dashboard/${address}`)}>Manage campaign</button>
                             </div>
                         )}
 

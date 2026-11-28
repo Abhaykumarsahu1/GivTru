@@ -9,6 +9,7 @@ import Navbar from "./components/Navbar";
 import BoardHome from "./pages/BoardHome";
 // import WelcomeModal from "./components/WelcomeModal";
 import { useState, useEffect } from "react";
+import CampaignManage from "./pages/CampaignManage";
 
 function App() {
    const [showWelcome, setShowWelcome] = useState(false);
@@ -36,6 +37,8 @@ function App() {
         <Route path="/dashboard"             element={<CampaignerDashboard />} />
         <Route path="/board/:address"        element={<BoardDashboard />} />
         <Route path="/board-home" element={<BoardHome />} />
+        <Route path="/dashboard" element={<CampaignerDashboard />} />
+        <Route path="/dashboard/:address" element={<CampaignManage />} />
       </Routes>
     </BrowserRouter>
     </>
