@@ -125,7 +125,7 @@ const Navbar = () => {
 
     const isActive = (path) =>
     location.pathname === path ||
-    location.pathname.startsWith(path + "/") ||
+    location.pathname.startsWith(path + "/") || (path === "/board-home" && location.pathname.startsWith("/board/")) ||
     (path === "/donate" && location.pathname.startsWith("/campaign/"));
     const unsupported = account && !NETWORKS[chainId];
     if (location.pathname === "/register") return null;

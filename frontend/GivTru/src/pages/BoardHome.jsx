@@ -1,514 +1,284 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { useContract } from "../hooks/useContract";
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useWallet } from "../context/WalletContext";
-import { ethers } from "ethers";
+import { useContract } from "../hooks/useContract";
+import WorkspaceHeader from "../components/WorkspaceHeader";
+import IpfsImage from "../components/IpfsImage";
+import { queryAll } from "../utils/events";
+import { campaignState, STATE_META, formatAmount, timeLeft, shortAddress } from "../utils/campaign";
 
-const BoardHome = () => {
-    const navigate = useNavigate();
-    const { account, symbol, explorer, chainId } = useWallet();
+const css = `
+.gt-bh-page { min-height: calc(100vh - 69px); background: #f1f5f9; }
+.gt-bh-inner { max-width: 1200px; margin: 0 auto; padding: 28px var(--page-gutter) 72px; }
+.gt-bh-label { margin: 0 0 14px; font-size: 13px; font-weight: 700; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.06em; }
+.gt-bh-list { display: flex; flex-direction: column; gap: 14px; }
+
+.gt-bh {
+    position: relative; display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 20px; align-items: center;
+    padding: 18px 22px 18px 28px; background: #ffffff; border: 1px solid var(--border); border-radius: 16px;
+    text-decoration: none; color: inherit; overflow: hidden;
+    transition: box-shadow 0.18s, border-color 0.18s, transform 0.18s;
+}
+.gt-bh:hover { box-shadow: 0 10px 28px rgba(15, 23, 42, 0.09); border-color: #cbd5e1; transform: translateY(-1px); }
+.gt-bh:focus-visible { outline: 3px solid rgba(245, 158, 11, 0.5); outline-offset: 2px; }
+.gt-bh-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: #cbd5e1; }
+.gt-bh[data-urgent="true"] .gt-bh-rail { background: #f59e0b; }
+.gt-bh[data-clear="true"] .gt-bh-rail { background: #22c55e; }
+.gt-bh-thumb { position: relative; width: 72px; height: 72px; border-radius: 14px; overflow: hidden; background: #f1f5f9; }
+.gt-bh-ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: linear-gradient(135deg, #fef3c7 0%, #e0e7ff 100%); color: #b45309; }
+.gt-bh-main { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.gt-bh-titlerow { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.gt-bh-title { margin: 0; min-width: 0; font-size: 18px; font-weight: 800; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gt-bh-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 13px; color: var(--text-muted); }
+.gt-bh-meta b { font-weight: 700; color: var(--text); }
+.gt-bh-meta code { font-family: var(--font-mono); font-size: 12.5px; }
+.gt-bh-side { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; text-align: right; }
+.gt-bh-funds span { display: block; font-size: 12px; font-weight: 600; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+.gt-bh-funds strong { font-size: 18px; font-weight: 800; }
+.gt-bh-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.gt-bh-chip { font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.gt-bh-chip.urgent { background: #fef3c7; color: #92400e; }
+.gt-bh-chip.danger { background: #fee2e2; color: #b91c1c; }
+.gt-bh-chip.ok { background: #dcfce7; color: #15803d; }
+.gt-bh-chip.muted { background: #f1f5f9; color: #475569; }
+.gt-bh-cta { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 700; color: #b45309; }
+@media (max-width: 760px) {
+    .gt-bh { grid-template-columns: 56px minmax(0, 1fr); gap: 14px; padding: 16px 16px 16px 22px; }
+    .gt-bh-thumb { width: 56px; height: 56px; border-radius: 12px; }
+    .gt-bh-side { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; align-items: center; text-align: left; flex-wrap: wrap; }
+    .gt-bh-chips { justify-content: flex-start; }
+}
+
+.gt-bh-state { max-width: 520px; margin: 56px auto; padding: 40px 28px; text-align: center; background: #ffffff; border: 1px dashed var(--border-strong); border-radius: 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.gt-bh-state h2 { margin: 0; font-size: 20px; font-weight: 800; }
+.gt-bh-state p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--text-muted); }
+.gt-bh-state .gt-btn { margin-top: 10px; }
+.gt-bh-warn { margin: 0 0 16px; padding: 12px 16px; border-radius: 12px; background: #fffbeb; border: 1px solid #fde68a; color: #78350f; font-size: 14px; }
+.gt-bh-warn button { margin-left: 6px; padding: 0; background: none; border: none; font: inherit; font-weight: 700; color: inherit; text-decoration: underline; cursor: pointer; }
+`;
+
+const Svg = ({ children, size = 18 }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {children}
+    </svg>
+);
+const IChevron = () => <Svg><path d="M9 6l6 6-6 6" /></Svg>;
+const IShield = () => <Svg size={24}><path d="M12 3l8 3v6c0 4.5-3.2 8.2-8 9-4.8-.8-8-4.5-8-9V6l8-3z" /><path d="M9 12l2 2 4-4" /></Svg>;
+
+const useNow = (ms = 60000) => {
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = setInterval(() => setNow(Date.now()), ms);
+        return () => clearInterval(id);
+    }, [ms]);
+    return now;
+};
+
+/**
+ * The contract has no index of "campaigns where address X is on the board", so we ask every campaign
+ * (one cheap isBoardMember call each) and load details only for the ones that match.
+ */
+function useBoardCampaigns() {
+    const { account, chainId, provider } = useWallet();
     const { getFactoryContractReadOnly, getCampaignContractReadOnly } = useContract();
-
-    const [boardCampaigns, setBoardCampaigns] = useState([]);
-    const [loading, setLoading]               = useState(true);
-    const [error, setError]                   = useState(null);
+    const [state, setState] = useState({ status: "loading", campaigns: [], failed: 0, approx: false });
+    const [reloadKey, setReloadKey] = useState(0);
 
     useEffect(() => {
-        if (account) fetchBoardCampaigns();
-    }, [account, chainId]);
+        let cancelled = false;
+        (async () => {
+            if (!account) { setState({ status: "nowallet", campaigns: [], failed: 0, approx: false }); return; }
+            setState((s) => ({ ...s, status: "loading" }));
+            try {
+                const factory = getFactoryContractReadOnly();
+                if (!factory) { setState({ status: "unsupported", campaigns: [], failed: 0, approx: false }); return; }
 
-    const fetchBoardCampaigns = async () => {
-        try {
-            setLoading(true);
-            setError(null);
+                const all = [...(await factory.getAllCampaigns())];
+                const flags = await Promise.all(
+                    all.map((a) => getCampaignContractReadOnly(a).isBoardMember(account).catch(() => false))
+                );
+                const mine = all.map((address, index) => ({ address, index })).filter((_, i) => flags[i]);
 
-            const factory = getFactoryContractReadOnly();
-            if (!factory) return;
-
-            const allAddresses = await factory.getAllCampaigns();
-
-            const results = await Promise.all(
-                allAddresses.map(async (address) => {
+                let approx = false;
+                const rows = await Promise.all(mine.map(async ({ address, index }) => {
                     try {
-                        const contract = getCampaignContractReadOnly(address);
+                        const c = getCampaignContractReadOnly(address);
+                        const [title, ipfsHash, goal, raised, deadline, campaigner, balance, boardMembers, totalRequests] =
+                            await Promise.all([
+                                c.title(), c.ipfsHash(), c.goalAmount(), c.totalDonated(), c.deadline(), c.campaigner(),
+                                c.getContractBalance(), c.getBoardMembers(), c.getTotalRequests(),
+                            ]);
+                        const reqs = await Promise.all(Array.from({ length: Number(totalRequests) }, (_, i) => c.requests(i)));
+                        const pendingIds = reqs.map((r, id) => ({ id, status: Number(r.status) })).filter((r) => r.status === 0).map((r) => r.id);
 
-                        const [
-                            title,
-                            goalAmount,
-                            totalDonated,
-                            status,
-                            boardMembers,
-                            totalRequests,
-                            balance,
-                            campaigner,
-                        ] = await Promise.all([
-                            contract.title(),
-                            contract.goalAmount(),
-                            contract.totalDonated(),
-                            contract.status(),
-                            contract.getBoardMembers(),
-                            contract.getTotalRequests(),
-                            contract.getContractBalance(),
-                            contract.campaigner(),
-                        ]);
-
-                        // only include if connected wallet is a board member
-                        const isMember = boardMembers.some(
-                            m => m.toLowerCase() === account.toLowerCase()
-                        );
-                        if (!isMember) return null;
-
-                        // count pending requests
-                        let pendingCount = 0;
-                        const total = Number(totalRequests);
-                        for (let i = 0; i < total; i++) {
-                            const req = await contract.requests(i);
-                            if (Number(req.status) === 0) pendingCount++;
+                        // which pending requests have I already voted on? (the contract hides its hasVoted mapping, so read events)
+                        let awaiting = pendingIds.length;
+                        if (pendingIds.length > 0) {
+                            try {
+                                const { events } = await queryAll(c, c.filters.RequestVoted(null, account), provider);
+                                const mineVoted = new Set(events.filter((e) => e.args).map((e) => Number(e.args.requestId)));
+                                awaiting = pendingIds.filter((id) => !mineVoted.has(id)).length;
+                            } catch { approx = true; }
                         }
 
                         return {
-                            address,
-                            title,
-                            goalAmount:    ethers.formatEther(goalAmount),
-                            totalDonated:  ethers.formatEther(totalDonated),
-                            status:        Number(status),
-                            boardMembers,
-                            totalRequests: total,
-                            pendingCount,
-                            balance:       ethers.formatEther(balance),
-                            campaigner,
+                            address, index, title, ipfsHash, goal, raised, balance, campaigner,
+                            deadline: Number(deadline),
+                            boardSize: boardMembers.length,
+                            requestCount: reqs.length,
+                            pending: pendingIds.length,
+                            awaiting,
                         };
                     } catch (err) {
-                        console.error("Error:", address, err);
+                        console.error("Could not load campaign", address, err);
                         return null;
                     }
-                })
-            );
+                }));
 
-            setBoardCampaigns(results.filter(Boolean));
+                if (cancelled) return;
+                const ok = rows.filter(Boolean).sort((a, b) => b.awaiting - a.awaiting || b.index - a.index);
+                setState({ status: "ready", campaigns: ok, failed: rows.length - ok.length, approx });
+            } catch (err) {
+                console.error("Could not load board campaigns", err);
+                if (!cancelled) setState({ status: "error", campaigns: [], failed: 0, approx: false });
+            }
+        })();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [account, chainId, provider, reloadKey]);
 
-        } catch (err) {
-            console.error(err);
-            setError("Failed to load board campaigns");
-        } finally {
-            setLoading(false);
-        }
-    };
+    return { ...state, reload: () => setReloadKey((k) => k + 1) };
+}
 
-    const getStatusInfo = (status) => {
-        switch (status) {
-            case 0: return { label: "Active",  color: "#22c55e", bg: "#052e16" };
-            case 1: return { label: "Expired", color: "#f59e0b", bg: "#451a03" };
-            case 2: return { label: "Closed",  color: "#ef4444", bg: "#450a0a" };
-            default: return { label: "Unknown", color: "#94a3b8", bg: "#1e293b" };
-        }
-    };
-
-    if (!account) return (
-        <div style={styles.centered}>
-            <p style={styles.msg}>Please connect your wallet.</p>
-        </div>
-    );
-
-    if (loading) return (
-        <div style={styles.centered}>
-            <p style={styles.msg}>⏳ Scanning campaigns for your board memberships...</p>
-        </div>
-    );
-
-    if (error) return (
-        <div style={styles.centered}>
-            <p style={styles.errorText}>⚠️ {error}</p>
-        </div>
-    );
+function BoardRow({ c, symbol, now }) {
+    const stateKey = campaignState(c, now);
+    const meta = STATE_META[stateKey];
+    const reached = c.goal > 0n && c.raised >= c.goal;
+    const open = meta.open;
+    const urgent = c.awaiting > 0;
 
     return (
-        <div style={styles.container}>
-
-            {/* Header */}
-            <div style={styles.header}>
-                <h1 style={styles.title}>🗳️ Board Member Portal</h1>
-                <p style={styles.subtitle}>
-                    Campaigns where you are a trusted board member
-                </p>
-                <p style={styles.wallet}>
-                    {account.slice(0, 10)}...{account.slice(-8)}
-                </p>
+        <Link to={`/board/${c.address}`} className="gt-bh" data-urgent={urgent} data-clear={!urgent && c.pending === 0}>
+            <span className="gt-bh-rail" />
+            <div className="gt-bh-thumb">
+                <IpfsImage hash={c.ipfsHash} fallback={<div className="gt-bh-ph"><IShield /></div>} />
             </div>
 
-            {/* Empty state */}
-            {boardCampaigns.length === 0 ? (
-                <div style={styles.emptyState}>
-                    <div style={styles.emptyIcon}>🔍</div>
-                    <h2 style={styles.emptyTitle}>No board memberships found</h2>
-                    <p style={styles.emptyDesc}>
-                        Your wallet is not a board member in any campaign.
-                    </p>
-                    <button style={styles.browseBtn} onClick={() => navigate("/donate")}>
-                        Browse Campaigns
-                    </button>
+            <div className="gt-bh-main">
+                <div className="gt-bh-titlerow">
+                    <h3 className="gt-bh-title" title={c.title}>{c.title}</h3>
+                    <span className={meta.badge}>{meta.label}</span>
                 </div>
-            ) : (
-                <>
-                    {/* Summary bar */}
-                    <div style={styles.summaryRow}>
-                        <div style={styles.summaryBox}>
-                            <span style={styles.summaryNum}>{boardCampaigns.length}</span>
-                            <span style={styles.summaryLbl}>Campaigns</span>
-                        </div>
-                        <div style={styles.summaryBox}>
-                            <span style={{
-                                ...styles.summaryNum,
-                                color: boardCampaigns.reduce((s, c) => s + c.pendingCount, 0) > 0
-                                    ? "#ef4444" : "#22c55e"
-                            }}>
-                                {boardCampaigns.reduce((s, c) => s + c.pendingCount, 0)}
-                            </span>
-                            <span style={styles.summaryLbl}>Pending Votes</span>
-                        </div>
-                        <div style={styles.summaryBox}>
-                            <span style={styles.summaryNum}>
-                                {boardCampaigns.filter(c => c.status === 0).length}
-                            </span>
-                            <span style={styles.summaryLbl}>Active</span>
-                        </div>
-                    </div>
+                <div className="gt-bh-meta">
+                    <span>Started by <code title={c.campaigner}>{shortAddress(c.campaigner)}</code></span>
+                    <span><b>{formatAmount(c.raised)} {symbol}</b> raised of {formatAmount(c.goal)}</span>
+                    <span>{c.requestCount} request{c.requestCount === 1 ? "" : "s"}</span>
+                    <span>{open ? timeLeft(c.deadline, now) : `Ended ${new Date(c.deadline * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}`}</span>
+                </div>
+            </div>
 
-                    {/* Campaign list */}
-                    <div style={styles.list}>
-                        {boardCampaigns.map((camp) => {
-                            const si = getStatusInfo(camp.status);
-                            return (
-                                <div key={camp.address} style={styles.card}>
-                                    <div style={styles.cardTop}>
-                                        <div style={styles.cardLeft}>
-                                            <h2 style={styles.cardTitle}>{camp.title}</h2>
-                                            <p style={styles.cardAddr}>
-                                                {camp.address.slice(0, 12)}...{camp.address.slice(-8)}
-                                            </p>
-                                        </div>
-                                        <div style={styles.cardRight}>
-                                            {/* Status badge */}
-                                            <div style={{
-                                                ...styles.badge,
-                                                color: si.color,
-                                                background: si.bg,
-                                                border: `1px solid ${si.color}`,
-                                            }}>
-                                                {si.label}
-                                            </div>
-                                            {/* Pending votes badge */}
-                                            {camp.pendingCount > 0 && (
-                                                <div style={styles.pendingBadge}>
-                                                    🔴 {camp.pendingCount} pending
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
+            <div className="gt-bh-side">
+                <div className="gt-bh-funds"><span>In contract</span><strong>{formatAmount(c.balance)} {symbol}</strong></div>
+                <div className="gt-bh-chips">
+                    {urgent && <span className="gt-bh-chip urgent">{c.awaiting} need{c.awaiting === 1 ? "s" : ""} your vote</span>}
+                    {urgent && !reached && <span className="gt-bh-chip danger">Goal not reached</span>}
+                    {!urgent && c.pending > 0 && <span className="gt-bh-chip muted">Waiting on other members</span>}
+                    {!urgent && c.pending === 0 && <span className="gt-bh-chip ok">All caught up</span>}
+                </div>
+                <span className="gt-bh-cta">{urgent ? "Review and vote" : "Open"} <IChevron /></span>
+            </div>
+        </Link>
+    );
+}
 
-                                    {/* Stats */}
-                                    <div style={styles.statsRow}>
-                                        <div style={styles.statBox}>
-                                            <span style={styles.statVal}>{camp.totalDonated} {symbol}</span>
-                                            <span style={styles.statLbl}>Raised</span>
-                                        </div>
-                                        <div style={styles.statBox}>
-                                            <span style={styles.statVal}>{camp.balance} {symbol}</span>
-                                            <span style={styles.statLbl}>Available</span>
-                                        </div>
-                                        <div style={styles.statBox}>
-                                            <span style={styles.statVal}>{camp.boardMembers.length}</span>
-                                            <span style={styles.statLbl}>Board Size</span>
-                                        </div>
-                                        <div style={styles.statBox}>
-                                            <span style={styles.statVal}>{camp.totalRequests}</span>
-                                            <span style={styles.statLbl}>Requests</span>
-                                        </div>
-                                    </div>
+const BoardHome = () => {
+    const navigate = useNavigate();
+    const { account, symbol, network, connectWallet, loading: walletLoading } = useWallet();
+    const { status, campaigns, failed, approx, reload } = useBoardCampaigns();
+    const now = useNow();
 
-                                    {/* Board members addresses */}
-                                    <div style={styles.membersSection}>
-                                        <p style={styles.membersTitle}>👥 Board Members</p>
-                                        <div style={styles.membersList}>
-                                            {camp.boardMembers.map((member, i) => (
-                                                <div key={i} style={{
-                                                    ...styles.memberRow,
-                                                    background: member.toLowerCase() === account.toLowerCase()
-                                                        ? "#052e16" : "#0f172a",
-                                                    border: member.toLowerCase() === account.toLowerCase()
-                                                        ? "1px solid #22c55e" : "1px solid #1e293b",
-                                                }}>
-                                                    <span style={styles.memberNum}>{i + 1}</span>
-                                                    <span style={styles.memberAddr}>
-                                                        {member.slice(0, 10)}...{member.slice(-8)}
-                                                    </span>
-                                                    {member.toLowerCase() === account.toLowerCase() && (
-                                                        <span style={styles.youTag}>YOU</span>
-                                                    )}
-                                                    <a
-                                                        href={`${explorer}/address/${member}`}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        style={styles.miniLink}
-                                                    >↗</a>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </div>
+    const totals = useMemo(() => ({
+        awaiting: campaigns.reduce((s, c) => s + c.awaiting, 0),
+        active: campaigns.filter((c) => STATE_META[campaignState(c, now)].open).length,
+    }), [campaigns, now]);
 
-                                    {/* Vote button */}
-                                    <button
-                                        style={{
-                                            ...styles.voteBtn,
-                                            background: camp.pendingCount > 0 ? "#ef4444" : "#f59e0b",
-                                        }}
-                                        onClick={() => navigate(`/board/${camp.address}`)}
-                                    >
-                                        {camp.pendingCount > 0
-                                            ? `🔴 Vote Now — ${camp.pendingCount} pending request${camp.pendingCount > 1 ? "s" : ""}`
-                                            : "🗳️ View Board Dashboard"
-                                        }
-                                    </button>
-                                </div>
-                            );
-                        })}
-                    </div>
-                </>
-            )}
+    const ready = status === "ready";
+    const stats = [
+        { label: "Campaigns you oversee", value: ready ? campaigns.length : "-" },
+        { label: "Awaiting your vote", value: ready ? totals.awaiting : "-", hint: ready && totals.awaiting > 0 ? "Requests are waiting on you" : undefined },
+        { label: "Still running", value: ready ? totals.active : "-" },
+    ];
+
+    let body;
+    if (status === "nowallet") {
+        body = (
+            <div className="gt-bh-state">
+                <h2>Connect your wallet</h2>
+                <p>Connect the wallet that was added as a board member.</p>
+                <button className="gt-btn gt-btn-primary" onClick={connectWallet} disabled={walletLoading}>
+                    {walletLoading ? "Connecting..." : "Connect Wallet"}
+                </button>
+            </div>
+        );
+    } else if (status === "unsupported") {
+        body = (
+            <div className="gt-bh-state">
+                <h2>GivTru isn't on this network yet</h2>
+                <p>Use the network switcher in the navbar to pick Arbitrum Sepolia or MST.</p>
+            </div>
+        );
+    } else if (status === "error") {
+        body = (
+            <div className="gt-bh-state">
+                <h2>Couldn't load your board campaigns</h2>
+                <p>Something went wrong while reading from the blockchain. Check your connection and try again.</p>
+                <button className="gt-btn gt-btn-primary" onClick={reload}>Try again</button>
+            </div>
+        );
+    } else if (status === "loading") {
+        body = (
+            <div className="gt-bh-list">
+                {[0, 1, 2].map((i) => <div key={i} className="gt-skeleton" style={{ height: 112, borderRadius: 16 }} />)}
+            </div>
+        );
+    } else if (campaigns.length === 0) {
+        body = (
+            <div className="gt-bh-state">
+                <h2>You're not on any board on {network?.name || "this network"}</h2>
+                <p>When a campaigner adds your wallet as a board member, the campaign shows up here. Check that you're connected with the right wallet and network.</p>
+                <button className="gt-btn gt-btn-secondary" onClick={() => navigate("/donate")}>Browse campaigns</button>
+            </div>
+        );
+    } else {
+        body = (
+            <>
+                {failed > 0 && (
+                    <p className="gt-bh-warn">{failed} campaign{failed === 1 ? "" : "s"} couldn't be loaded.<button onClick={reload}>Retry</button></p>
+                )}
+                {approx && (
+                    <p className="gt-bh-warn">Vote history couldn't be read from this network, so the "awaiting your vote" counts may include requests you already voted on.</p>
+                )}
+                <p className="gt-bh-label">Campaigns on {network?.name}</p>
+                <div className="gt-bh-list">
+                    {campaigns.map((c) => <BoardRow key={c.address} c={c} symbol={symbol} now={now} />)}
+                </div>
+            </>
+        );
+    }
+
+    return (
+        <div className="gt-bh-page">
+            <style>{css}</style>
+            <WorkspaceHeader
+                eyebrow="Board member portal"
+                title="Campaigns you oversee"
+                subtitle={account ? "You decide when a campaign can spend its funds. Every vote is public and final." : "Connect a wallet to see the campaigns where you are a trustee."}
+                stats={stats}
+            />
+            <main className="gt-bh-inner">{body}</main>
         </div>
     );
-};
-
-const styles = {
-    container: {
-        minHeight: "100vh",
-        background: "#0f172a",
-        padding: "40px 20px",
-        fontFamily: "sans-serif",
-        maxWidth: "900px",
-        margin: "0 auto",
-        display: "flex",
-        flexDirection: "column",
-        gap: "24px",
-    },
-    centered: {
-        minHeight: "80vh",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        alignItems: "center",
-        gap: "16px",
-        background: "#0f172a",
-        fontFamily: "sans-serif",
-    },
-    header: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px",
-    },
-    title: {
-        fontSize: "32px",
-        fontWeight: "800",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    subtitle: {
-        color: "#94a3b8",
-        fontSize: "15px",
-        margin: 0,
-    },
-    wallet: {
-        color: "#64748b",
-        fontFamily: "monospace",
-        fontSize: "13px",
-        margin: 0,
-    },
-    summaryRow: {
-        display: "grid",
-        gridTemplateColumns: "repeat(3, 1fr)",
-        gap: "16px",
-    },
-    summaryBox: {
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "12px",
-        padding: "20px",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: "6px",
-    },
-    summaryNum: {
-        fontSize: "28px",
-        fontWeight: "800",
-        color: "#f59e0b",
-    },
-    summaryLbl: {
-        fontSize: "13px",
-        color: "#64748b",
-    },
-    list: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "20px",
-    },
-    card: {
-        background: "#1e293b",
-        border: "1px solid #334155",
-        borderRadius: "16px",
-        padding: "24px",
-        display: "flex",
-        flexDirection: "column",
-        gap: "16px",
-    },
-    cardTop: {
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-start",
-        flexWrap: "wrap",
-        gap: "12px",
-    },
-    cardLeft: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "4px",
-    },
-    cardRight: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "flex-end",
-        gap: "8px",
-    },
-    cardTitle: {
-        fontSize: "20px",
-        fontWeight: "700",
-        color: "#f1f5f9",
-        margin: 0,
-    },
-    cardAddr: {
-        color: "#64748b",
-        fontFamily: "monospace",
-        fontSize: "12px",
-        margin: 0,
-    },
-    badge: {
-        padding: "4px 12px",
-        borderRadius: "20px",
-        fontSize: "12px",
-        fontWeight: "700",
-    },
-    pendingBadge: {
-        background: "#450a0a",
-        border: "1px solid #ef4444",
-        color: "#fca5a5",
-        padding: "4px 12px",
-        borderRadius: "20px",
-        fontSize: "12px",
-        fontWeight: "700",
-    },
-    statsRow: {
-        display: "grid",
-        gridTemplateColumns: "repeat(4, 1fr)",
-        gap: "12px",
-    },
-    statBox: {
-        background: "#0f172a",
-        borderRadius: "10px",
-        padding: "12px",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: "4px",
-    },
-    statVal: {
-        fontSize: "15px",
-        fontWeight: "700",
-        color: "#f59e0b",
-    },
-    statLbl: {
-        fontSize: "11px",
-        color: "#64748b",
-    },
-    membersSection: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "8px",
-    },
-    membersTitle: {
-        color: "#94a3b8",
-        fontSize: "13px",
-        fontWeight: "600",
-        margin: 0,
-    },
-    membersList: {
-        display: "flex",
-        flexDirection: "column",
-        gap: "6px",
-    },
-    memberRow: {
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        padding: "10px 14px",
-        borderRadius: "8px",
-    },
-    memberNum: {
-        color: "#64748b",
-        fontSize: "12px",
-        fontWeight: "700",
-        width: "16px",
-    },
-    memberAddr: {
-        color: "#94a3b8",
-        fontFamily: "monospace",
-        fontSize: "12px",
-        flex: 1,
-    },
-    youTag: {
-        background: "#22c55e",
-        color: "#000",
-        padding: "2px 6px",
-        borderRadius: "4px",
-        fontSize: "10px",
-        fontWeight: "800",
-    },
-    miniLink: {
-        color: "#3b82f6",
-        fontSize: "12px",
-        textDecoration: "none",
-    },
-    voteBtn: {
-        color: "#000",
-        border: "none",
-        padding: "14px",
-        borderRadius: "10px",
-        fontWeight: "bold",
-        cursor: "pointer",
-        fontSize: "15px",
-    },
-    emptyState: {
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        gap: "16px",
-        padding: "60px 20px",
-        textAlign: "center",
-    },
-    emptyIcon: { fontSize: "64px" },
-    emptyTitle: { color: "#f1f5f9", fontSize: "24px", margin: 0 },
-    emptyDesc: { color: "#94a3b8", fontSize: "15px", margin: 0 },
-    browseBtn: {
-        background: "#f59e0b",
-        color: "#000",
-        border: "none",
-        padding: "12px 24px",
-        borderRadius: "10px",
-        fontWeight: "bold",
-        cursor: "pointer",
-        fontSize: "14px",
-    },
-    msg: { color: "#94a3b8", fontSize: "16px" },
-    errorText: { color: "#ef4444", fontSize: "16px" },
 };
 
 export default BoardHome;
